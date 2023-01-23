@@ -1,0 +1,2 @@
+* !text !filter !merge !diff
+participant-login-poc/crates/client/resources/pepcli filter=lfs diff=lfs merge=lfs -text
