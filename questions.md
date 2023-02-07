@@ -1,0 +1,1 @@
+- Is the [bureaucracy](https://irma.app/docs/issuer/) needed to become an IRMA issuer a problem? (Note that it's not needed for a demo application)
