@@ -1,0 +1,3 @@
+services:
+  pepcli:
+    build .
