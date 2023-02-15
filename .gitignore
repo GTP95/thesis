@@ -274,3 +274,10 @@ TSWLatexianTemp*
 
 # Makeindex log files
 *.lpz
+
+# directories
+/papers_and_other_material
+/Docker/pep_data
+
+# PEP development
+token.json
