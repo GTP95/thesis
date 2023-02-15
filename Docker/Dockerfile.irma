@@ -1,0 +1,19 @@
+FROM golang:1.18
+
+RUN apt update && apt -y install vim
+
+RUN git clone https://github.com/privacybydesign/irmago --branch v0.11.0 --depth 1
+
+WORKDIR irmago
+
+RUN go env -w GO111MODULE=auto
+
+RUN go install ./irma
+
+EXPOSE 8088
+
+RUN irma scheme issuer keygen
+
+COPY irmastart.sh .
+
+CMD ["bash", "irmastart.sh"]

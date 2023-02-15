@@ -1,0 +1,7 @@
+FROM gitlabregistry.pep.cs.ru.nl/pep-public/core/dtap-master:latest
+
+# Add alias to make usage of pepcli more convinient
+RUN echo 'alias pepcli="/app/pepcli --client-working-directory /config --oauth-token /data/token.json"' >> /root/.bashrc
+
+CMD /bin/bash
+
