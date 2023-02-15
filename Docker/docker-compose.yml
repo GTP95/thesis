@@ -16,4 +16,5 @@ services:
       context: .
       dockerfile: Dockerfile.irma
     volumes:
+      # make IRMA schemes persistent, so I can add my own
       - /root/.local/share/irma/
