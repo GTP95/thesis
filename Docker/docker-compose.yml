@@ -1,0 +1,19 @@
+version: "3"
+
+services:
+  pepcli:
+    build:
+      context: .
+      dockerfile: Dockerfile.pepcli
+    volumes:
+      - ./pep_data:/data
+    # Make it interactive:
+    stdin_open: true
+    tty: true
+
+  irma:
+    build:
+      context: .
+      dockerfile: Dockerfile.irma
+    volumes:
+      - /root/.local/share/irma/
