@@ -11,7 +11,7 @@ services:
     stdin_open: true
     tty: true
 
-  irma:
+  irmaserver:
     build:
       context: .
       dockerfile: Dockerfile.irma
@@ -19,4 +19,21 @@ services:
       - 8088:8088
     volumes:
       # make IRMA schemes persistent, so I can add my own
-      - /root/.local/share/irma/
+      - irma-schemes:/root/.local/share/irma
+
+  irmabuilder:
+    build:
+      context: ../../irmamobile/docker
+      dockerfile: Dockerfile
+    volumes:
+      - type: bind
+        source: ./irma-apk
+        target: /root/irmamobile/build/app/outputs/apk
+      - type: volume
+        read_only: true
+        source: irma-schemes/irma_configuration
+        target: /root/irmamobile/irma_configuration
+
+
+volumes:
+  irma-schemes:
