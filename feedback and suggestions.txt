@@ -1,0 +1,6 @@
+The most interesting aspects is to evaluate different design possibilities for some parts of the system and discuss them, and then provide motivations for my choices. So keep track of the interesting points and expand on them. 
+Regarding the BPMN diagram for access data:
+1. Check the (session) keys part: is the key server that generates keys for the user or the user that generates them and gives the key server its public key? Probably better to not have the private key in two places...
+2. Maybe add colors to make it easier to read the diagram: one color for each party
+
+Regarding the participant registration: an interesting point is the creation of the special group Use this for now to be able to show a working PoC with what's already implemented in PEP, but in the future a smart way of generating the credentials could allow for skipping that, think about it as it removes a lot of burden from the proposed solution.
