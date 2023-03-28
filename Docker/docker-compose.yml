@@ -19,7 +19,7 @@ services:
       - 8088:8088
     volumes:
       # make IRMA schemes persistent, so I can add my own
-      - irma-schemes:/root/.local/share/irma
+      - irma-schemes:/root/.local/share/irma/irma_configuration
 
   irmabuilder:
     build:
@@ -31,7 +31,7 @@ services:
         target: /root/irmamobile/build/app/outputs/apk
       - type: volume
         read_only: true
-        source: irma-schemes/irma_configuration
+        source: irma-schemes
         target: /root/irmamobile/irma_configuration
 
 
