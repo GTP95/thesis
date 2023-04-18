@@ -1,5 +1,6 @@
 //Code adapted from https://github.com/tweedegolf/irmars/blob/main/examples/issuance.rs
 
+use std::future::Future;
 use std::time::Duration;
 use irma::{CredentialBuilder, IrmaClient, IrmaRequest, IssuanceRequestBuilder};
 use tokio::time::sleep;
@@ -26,7 +27,7 @@ impl IrmaSessionHandler{
         return request;
     }
 
-    fn generate_qr(&self, sessionptr: String){  //TODO: make this generate an image instead of a string, so that I can embed it into the web page
+    fn generate_qr(&self, sessionptr: String) -> String {  //TODO: make this generate an image instead of a string, so that I can embed it into the web page
         // Render a qr
         let qr = qrcode::QrCode::new(sessionptr)
             .unwrap()
@@ -34,11 +35,10 @@ impl IrmaSessionHandler{
             .quiet_zone(false)
             .module_dimensions(2, 1)
             .build();
-        println!("\n\n{}", qr);
+        return qr;
     }
 
-    #[tokio::main]
-    pub async fn issue_credential(&self, credential: String, value: String){
+    pub async fn issue_credential(&self, credential: String, value: String) -> String  {
         let request=self.build_request(credential, value);
 
         // Start the session
@@ -49,20 +49,20 @@ impl IrmaSessionHandler{
 
         // Encode the session pointer
         let sessionptr = serde_json::to_string(&session.session_ptr).unwrap();
-        self.generate_qr(sessionptr);
+        return self.generate_qr(sessionptr);
 
         // Periodically poll if the session was successfully concluded
-        loop {
-            match self.client.result(&session.token).await {
-                Ok(_) => break,
-                Err(irma::Error::SessionNotFinished(_)) => {}
-                Err(v) => panic!("{}", v),
-            }
-
-            sleep(Duration::from_secs(2)).await;
-        }
-
-        println!("Issuance done");
+       //loop {
+       //    match self.client.result(&session.token).await {
+       //        Ok(_) => break,
+       //        Err(irma::Error::SessionNotFinished(_)) => {}
+       //        Err(v) => panic!("{}", v),
+       //    }
+       //
+       //    sleep(Duration::from_secs(2)).await;
+       //}
+       //
+       //println!("Issuance done");
     }
 
 
