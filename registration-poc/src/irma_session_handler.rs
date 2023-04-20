@@ -3,13 +3,19 @@
 use std::future::Future;
 use std::time::Duration;
 use image::Luma;
-use irma::{CredentialBuilder, IrmaClient, IrmaRequest, IssuanceRequestBuilder};
+use irma::{CredentialBuilder, IrmaClient, IrmaRequest, IssuanceRequestBuilder, SessionData};
 use qrcode::{EcLevel, QrCode, Version};
 use qrcode::render::{svg, unicode};
 use tokio::time::sleep;
 
 pub(crate) struct IrmaSessionHandler {
     client: IrmaClient
+}
+
+pub(crate) struct IssueCredentialRequestResult {  //My own type to return both the QR code and the session so i can check the session's status after the request
+pub(crate) qr: String,
+    pub(crate) session: SessionData,
+    pub(crate) client: IrmaClient
 }
 
 impl IrmaSessionHandler{
@@ -21,7 +27,7 @@ impl IrmaSessionHandler{
 
 
 
-    pub async fn issue_credential(&self, credential: String, value: &String) -> String  {
+    pub async fn issue_credential(&self, credential: String, value: &String) -> IssueCredentialRequestResult  {
         let request=self.build_request(credential, value.to_string());
 
         // Start the session
@@ -33,20 +39,16 @@ impl IrmaSessionHandler{
         // Encode the session pointer
         let sessionptr = serde_json::to_string(&session.session_ptr).unwrap();
         println!("Session pointer: {}", sessionptr);
-        return self.generate_qr(sessionptr);
 
-        // Periodically poll if the session was successfully concluded
-        //loop {
-        //    match self.client.result(&session.token).await {
-        //        Ok(_) => break,
-        //        Err(irma::Error::SessionNotFinished(_)) => {}
-        //        Err(v) => panic!("{}", v),
-        //    }
-        //
-        //    sleep(Duration::from_secs(2)).await;
-        //}
-        //
-        //println!("Issuance done");
+        let result=IssueCredentialRequestResult{
+            qr: self.generate_qr(sessionptr),
+            session: session,
+            client: self.client.clone()
+        };
+
+        return result;
+
+
     }
 
     fn build_request(&self, credential: String, value: String) -> IrmaRequest {
