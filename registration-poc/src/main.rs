@@ -1,5 +1,6 @@
 use std::ops::Add;
-use rocket::Rocket;
+use rocket::response::stream::TextStream;
+use rocket::tokio::time::{sleep, Duration};
 use crate::irma_session_handler::IrmaSessionHandler;
 use crate::token_generator::generate_participant_token;
 #[macro_use] extern crate rocket;
@@ -9,11 +10,28 @@ mod irma_session_handler;
 
 
 #[get("/")]
-async fn index() -> String {
+async fn index() -> TextStream![String] {
     let irma_session_handler=IrmaSessionHandler::new("http://localhost:8088");   //eduroam ip: 145.116.169.159
     let id = generate_participant_token();
-    let qr=irma_session_handler.issue_credential("irma-demo.PEP.id".to_string(), &id).await;
-    return qr.add("\n\nCredential to be added to auth server: ").add(&id);
+    let request_result=irma_session_handler.issue_credential("irma-demo.PEP.id".to_string(), &id).await;
+
+    TextStream! {
+        yield request_result.qr.add("\n\nCredential to be added to auth server: ").add(&id);   //Shows QR code and the credential contained therein
+
+        // Periodically poll if the session was successfully concluded
+        loop {
+            match request_result.client.result(&request_result.session.token).await {
+                Ok(_) => break,
+                Err(irma::Error::SessionNotFinished(_)) => {}
+                Err(v) => panic!("{}", v),
+            }
+
+            sleep(Duration::from_secs(2)).await;
+        }
+
+        yield String::from("\nIssuance done");
+    }
+
 }
 
 #[launch]
