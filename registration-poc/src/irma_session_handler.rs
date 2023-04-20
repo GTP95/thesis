@@ -1,12 +1,12 @@
 //Code adapted from https://github.com/tweedegolf/irmars/blob/main/examples/issuance.rs
 
-use std::future::Future;
-use std::time::Duration;
-use image::Luma;
+
+
+
 use irma::{CredentialBuilder, IrmaClient, IrmaRequest, IssuanceRequestBuilder, SessionData};
-use qrcode::{EcLevel, QrCode, Version};
-use qrcode::render::{svg, unicode};
-use tokio::time::sleep;
+use qrcode::{QrCode};
+use qrcode::render::{unicode};
+
 
 pub(crate) struct IrmaSessionHandler {
     client: IrmaClient
