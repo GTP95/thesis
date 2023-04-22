@@ -22,5 +22,14 @@ PROBLEM: giving the participants their ID could reveal more than necessary. List
 
 
 There is no column with the participant's pseudonym!!! It gets retrieved form somewhere else. Inside the row of a participant, I have the ParticipantIdentifier (the basis for getting a person's pseudonyms using reshuffling) and a ShortPseudinym, which is a random number that gets generated for each "sub-study" (i.e. for each medical test is done to the participant).
-urrently, to give a participant access only to its own row, an administrator would need to create a group for each participant. 
-Maybe another possibility is to write a new component separate from the rest of PEP that sits in front of it, with unlimited access to PEP that then gives to a user access to only its own data. But how can such a component link a user that authenticates via IRMA to its data? Actually there's an even bigger problem here:  such a component would have access to all *plaintext* data, since once enrolled in PEP would get a data key to be able to decrypt the data!. Even if I don't write code to actually decrypt the data, would this be an acceptable  single point of failure? 
+Currently, to give a participant access only to its own row, an administrator would need to create a group for each participant. 
+Maybe another possibility is to write a new component separate from the rest of PEP that sits in front of it, with unlimited access to PEP that then gives to a user access to only its own data. But how can such a component link a user that authenticates via IRMA to its data? Actually there's an even bigger problem here:  such a component would have access to all *plaintext* data, since once enrolled in PEP would get a data key to be able to decrypt the data!. Even if I don't write code to actually decrypt the data, would this be an acceptable  single point of failure?
+In the end, we decided to write a separate component, in the form of a web application, that integrates with PEP's login procedure. It works as another identity provider, the rest stays the same.
+
+Problem: How to have some operations done server-side and other client-side inside the same webapp? It would be possible to use to different Rust web frameworks or
+to write some JS code for the client-side. But then this would make it harder to use the `pepcli` tool to handle logging in and downloading files. Would running
+everything client-side be an acceptable solution? The real problem here is if a malicious user would be able to trick the registration phase into generating a card with another user's credentials. But this doesn't seem a real issue though, as the registration phase is carried out in a "trusted" environment and not on the
+user's PC. But still, how to use `pepcli`? Would it be possible to download it to the user's browser's local storage and use it from there? Or there is something
+preventing me from using executables this way? 
+I actually can't run everything client-side: a user could just send along the token making using IRMA pointless. So I need to mix client-side and server-side code.
+A possible way of doing this is to convert `pepcli` to a `wasm` library and then call it from some `JS` code linked to the rest via static `HTML` files or templates.
