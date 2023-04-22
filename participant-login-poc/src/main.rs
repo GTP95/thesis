@@ -4,13 +4,21 @@ mod irma_session_handler;
 extern crate rocket;
 
 use crate::irma_session_handler::IrmaSessionHandler;
+use rocket::http::Status;
+use rocket::response::content::RawHtml;
 use rocket::response::stream::TextStream;
+use rocket::response::{content, status};
 use rocket::tokio::time::{interval, sleep, Duration};
+use std::fs;
 use std::ops::Add;
 
 #[get("/")]
-async fn index() -> String {
-    String::from("AUTH")
+async fn index() -> status::Custom<content::RawHtml<String>> {
+    let index = fs::read_to_string("static/index.html");
+    status::Custom(
+        Status::Accepted,
+        content::RawHtml(index.expect("Error reading index page")),
+    )
 }
 
 #[get("/disclose")]
@@ -57,5 +65,4 @@ fn hello() -> TextStream![&'static str] {
 #[launch]
 fn rocket() -> _ {
     rocket::build().mount("/", routes![index, irma_disclose_id, hello])
-    // rocket::build().mount("/disclose", routes![irma_disclose_id])
 }
