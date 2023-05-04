@@ -1,3 +1,5 @@
+---
+
 version: "3"
 
 services:
@@ -34,6 +36,10 @@ services:
         source: irma-schemes
         target: /root/irmamobile/irma_configuration
 
+  identityprovider:
+    image: silintl/ssp-base  # https://hub.docker.com/r/silintl/ssp-base
+    ports:
+      - 80:8080
 
 volumes:
   irma-schemes:
