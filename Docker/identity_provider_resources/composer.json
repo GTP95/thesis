@@ -1,0 +1,54 @@
+{
+  "name": "silinternational/ssp-base",
+  "description": "Base image for SimpleSAMLphp",
+  "type": "library",
+  "license": "MIT",
+  "authors": [
+    {
+      "name": "Phillip Shipley",
+      "email": "phillip.shipley@gmail.com"
+    }
+  ],
+  "require": {
+    "php": ">=8.1",
+    "ext-gmp": "*",
+    "ext-json": "*",
+    "ext-memcached": "*",
+    "simplesamlphp/simplesamlphp": "^1.19.6",
+    "simplesamlphp/composer-module-installer": "1.1.8",
+    "silinternational/simplesamlphp-module-expirychecker": "^3.1.0",
+    "silinternational/simplesamlphp-module-silauth": "^7.1.0",
+    "silinternational/simplesamlphp-module-mfa": "^5.2.0",
+    "silinternational/simplesamlphp-module-profilereview": "^2.1.0",
+    "silinternational/ssp-utilities": "^1.1.0",
+    "silinternational/simplesamlphp-module-material": "^8.0.2",
+    "silinternational/simplesamlphp-module-sildisco": "^3.3.1",
+    "silinternational/php-env": "^3.1.0",
+    "gettext/gettext": "^4.8@dev",
+    "firebase/php-jwt": "^6.4"
+  },
+  "require-dev": {
+    "behat/behat": "^3.8",
+    "behat/mink-extension": "^2.3",
+    "dmore/chrome-mink-driver": "^2.8",
+    "phpunit/phpunit": "^7.5.19 || ^8.0",
+    "roave/security-advisories": "dev-master"
+  },
+  "autoload": {
+    "files": [
+      "vendor/yiisoft/yii2/Yii.php"
+    ]
+  },
+  "config": {
+    "allow-plugins": {
+      "simplesamlphp/composer-module-installer": true,
+      "yiisoft/yii2-composer": true
+    }
+  },
+  "repositories":[
+	  {
+		  "type":"vcs",
+		  "url":"https://github.com/GTP95/simplesamlphp-module-authirma"
+	  }
+  ]
+}
