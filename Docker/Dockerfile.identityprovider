@@ -1,0 +1,9 @@
+FROM silintl/ssp-base
+WORKDIR /data
+#Copy my own version, contains URL of IRMA module's new repo
+COPY identity_provider_resources/composer.json composer.json
+RUN composer require firebase/php-jwt
+RUN composer require irma/simplesamlphp-module-authirma:*@dev
+EXPOSE 80/tcp
+ENTRYPOINT ["/usr/local/bin/s3-expand"]
+CMD ["/data/run.sh"]
