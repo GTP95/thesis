@@ -33,3 +33,25 @@ user's PC. But still, how to use `pepcli`? Would it be possible to download it t
 preventing me from using executables this way? 
 I actually can't run everything client-side: a user could just send along the token making using IRMA pointless. So I need to mix client-side and server-side code.
 A possible way of doing this is to convert `pepcli` to a `wasm` library and then call it from some `JS` code linked to the rest via static `HTML` files or templates.
+
+Problem: after presenting the token to the auth server, I get an access token back. It would be desirable to have it sent directly to the user, without passing through the web app. But how? Use the rekey magic? It would solve the issue here! But I don't think the auth server support it...
+Good thing: with `pepcli` it is possible to specify the access ticket with the -T flag, so propbably the step of obtaining a ticket and using it can be decoupled.
+Temporary solution: since the webapp is just a PoC, have it forward the access token to the user (so use it in client-side code). Leave it as future work to modify the communication protocol between PEP servers so that the webapp can ask to have the token sent directly to the user's browser.
+Good thing: it is possible to pass the (OAuth) token to `pepcli` as a string on the command line.
+ACTUALLY, the problem was that I forgot the actual authenticaton flow. Here is how it would work in my case:
+
+1. The user navigates to the website hosting the webapp and chooses to login with the Yivi app.
+2. The web app displays the IRMA QR code and an IRMA session happens. The server-side gets the user's token and encapsulates it into a SAML file. 
+3. That SAML file is sent to the user (actually the clien-side of the webapp).
+And from now on, the procedure is the same as the usual one:
+4. The webapp client-side presents the SAML file to the auth server
+5. The  auth server replies with an OAuth token
+6. The client-side presents the Oauth token to the key server
+7. The key server replies with the ClientKeys file (again to the client-side)
+8. The client-side presents some information therein contained to the access manager. The access manager talks with the transcriptor and gives back to the user a ticket
+9. With the ticket, the client-side can get the data from the storage facility and use one of the keys of the Client keys file to decrypt it.
+
+So in all this, I need to communicate directly with the auth server.
+
+To build an Identity Provider, I first found this: [simplesamlphp-module-authirma](https://github.com/privacybydesign/simplesamlphp-module-authirma). It is a plugin for SimpleSAMLphp that adds IRMA as an identity provider. But it is unmantained, and developed at a time where the IRMA web server and the IRMA API server where two separate components. While trying to make it work again, I stumbled upon the problem of getting the keys for the API and web servers. Probably the key is the same for both, as now the irmago server implements both, but I wasn't able to find the certificate in the required format inside my Docker container.  
+I then found this: [irma-idp](https://github.com/SURFnet/irma-idp). It is m ore recent, although it hasn't been updated in years too. But at least it targets the new irmago implementation that has bot web and API in the same piece of sw. But missing configuration instructions and again not able to find the required certificate (at least by trying the method reported in the README).
