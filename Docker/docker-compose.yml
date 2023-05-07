@@ -36,23 +36,12 @@ services:
         source: irma-schemes
         target: /root/irmamobile/irma_configuration
 
-  identityprovider:
-    image: silintl/ssp-base  # https://hub.docker.com/r/silintl/ssp-base
-    ports:
-      - 8080:80
-    env_file:
-      - identity_provider_resources/identityprovider.env
-    volumes:
-      - ./identity_provider_resources/favicon-32x32.png:/data/vendor/simplesamlphp/simplesamlphp/www/favicon.png
-      - ./identity_provider_resources/cert:/data/vendor/simplesamlphp/simplesamlphp/cert
-
-
-  identityprovidertest:
+  dentityprovider:
     build:
       context: .
       dockerfile: Dockerfile.identityprovider
     ports:
-      - 8081:80
+      - 8080:80
     env_file:
       - identity_provider_resources/identityprovider.env
     volumes:

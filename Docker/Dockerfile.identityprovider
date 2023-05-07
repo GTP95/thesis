@@ -3,6 +3,7 @@ WORKDIR /data
 #Copy my own version, contains URL of IRMA module's new repo
 COPY identity_provider_resources/composer.json composer.json
 RUN composer require firebase/php-jwt
+# Somehow this doesn't work, I have to run it manually after creating the container
 RUN composer require irma/simplesamlphp-module-authirma:*@dev
 EXPOSE 80/tcp
 ENTRYPOINT ["/usr/local/bin/s3-expand"]
