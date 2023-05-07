@@ -278,6 +278,8 @@ TSWLatexianTemp*
 # directories
 /papers_and_other_material
 /Docker/pep_data
+/home/giacomo/git/thesis/Docker/identity_provider_resources/cert
+/Docker/irma-apk/
 
 # PEP development
 token.json
