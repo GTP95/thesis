@@ -276,7 +276,7 @@ TSWLatexianTemp*
 *.lpz
 
 # directories
-/papers_and_other_material
+/papers_and_other_material/blueprint-master
 /Docker/pep_data
 /home/giacomo/git/thesis/Docker/identity_provider_resources/cert
 /Docker/irma-apk/
@@ -284,3 +284,8 @@ TSWLatexianTemp*
 # PEP development
 token.json
 ClientKeys.json
+
+# misc files
+blueprint-master.tar.gz
+blueprint\ aug\ 2020\ main.pdf
+
