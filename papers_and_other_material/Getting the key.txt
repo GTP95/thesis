@@ -1,0 +1,9 @@
+User contacts auth server
+Auth server contacts identity provider, for now Surf Conext
+It sends a SAML (XML) file to the user
+The user presents the SAML file to the auth server
+The auth server replies with an Oauth token
+The user presents the Oauth token to the key server
+The key server replies with the Client keys file (I think it's the JSON file)
+The user presents some information therein contained to the access manager. The access manager talks with the transcriptor and gives back to the user a ticket
+With the ticket, the user can get the data from the storage facility and use one of the keys of the Client keys file to decrypt it.
