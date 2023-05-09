@@ -55,3 +55,20 @@ So in all this, I need to communicate directly with the auth server.
 
 To build an Identity Provider, I first found this: [simplesamlphp-module-authirma](https://github.com/privacybydesign/simplesamlphp-module-authirma). It is a plugin for SimpleSAMLphp that adds IRMA as an identity provider. But it is unmantained, and developed at a time where the IRMA web server and the IRMA API server where two separate components. While trying to make it work again, I stumbled upon the problem of getting the keys for the API and web servers. Probably the key is the same for both, as now the irmago server implements both, but I wasn't able to find the certificate in the required format inside my Docker container.  
 I then found this: [irma-idp](https://github.com/SURFnet/irma-idp). It is m ore recent, although it hasn't been updated in years too. But at least it targets the new irmago implementation that has bot web and API in the same piece of sw. But missing configuration instructions and again not able to find the required certificate (at least by trying the method reported in the README).
+
+After talking with the PEP team, there are 3 possibilities:
+1. Write a plugin for SimpleSAMLphp to have an IdP using IRMA
+2. Write a middleware that sidesteps PEP's Apache server. On the same server running the auth server, there's an Apache server with the Sibboleth plugin. It 
+communicates using SAML2.0 with the IdP (for now only SurfCONEXT) and, if the session between the two is successful, it sends some HTTP headers to the auth server
+with the session's result. So it would be possible to write a middleware that stays on the side of the Apache server on the same machine and if the IRMA
+authentication is successful sends to the auth server those HTTP headers. See `OAuthProvider::handleAuthorizationRequest` in 
+`~/git/core-master/authserver/OAuthprovider.cpp` for how those headers shoukld look like and how are used.
+3. Write a Rust middleware that implements SAML2.0 to communicate directly with Shibbolet.
+
+### Possibilities evaluation
+The first option let's keep a consistent picture: no special way to authenticate for participants. The drawback is that I don't know PHP, but since I was crazy
+enough to use Rust just for this thesis it is an annoyance but not a real roadblock  
+
+The second option has the advantage of letting me reuse the (little) Rust code I've already written. But then there would be two different ways to login depending on the user's role. In addition to this, it could be that the potential impact of a bug in my code would be more severe than in the case of a SimpleSAMLphp plugin  
+
+The last option is the hardest, and so the one more likely to go wrong from a security perspective.
