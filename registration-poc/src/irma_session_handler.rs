@@ -34,7 +34,7 @@ impl IrmaSessionHandler {
             .client
             .request(&request)
             .await
-            .expect("Failed to start session");
+            .expect("Failed to start session requesting credential issuance to the IRMA server. Check if the server is running and is able to issue the requested credential");
 
         // Encode the session pointer
         let sessionptr = serde_json::to_string(&session.session_ptr).unwrap();
