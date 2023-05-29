@@ -14,6 +14,7 @@ services:
     tty: true
 
   irmaserver:
+    container_name: irmaserver
     build:
       context: .
       dockerfile: Dockerfile.irma
@@ -22,6 +23,8 @@ services:
     volumes:
       # make IRMA schemes persistent, so I can add my own
       - irma-schemes:/root/.local/share/irma/irma_configuration
+    networks: 
+      - irma-network
 
   irmabuilder:
     build:
@@ -51,3 +54,8 @@ services:
 
 volumes:
   irma-schemes:
+
+networks:
+  irma-network:
+    name: irma-network
+    driver: bridge
