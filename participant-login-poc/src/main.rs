@@ -1,5 +1,4 @@
 mod irma_session_handler;
-mod HTTPrequestBuilder;
 mod HTTPclient;
 
 #[macro_use]
@@ -53,15 +52,7 @@ async fn irma_disclose_id() -> TextStream![String] {
 }
 
 fn oauth_request(server_address: String, user_id: &String, spoof_check_secret: &String){
-    let request_builder=HTTPrequestBuilder::HTTPrequestBuilder::new (
-        server_address,
-        String::from("POST"),
-        String::from(""),
-        user_id,
-        spoof_check_secret
-    );
-    let request=request_builder.build(user_id, spoof_check_secret);
-    
+
 }
 
 #[launch]
