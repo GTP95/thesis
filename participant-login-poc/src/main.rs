@@ -1,5 +1,6 @@
 mod irma_session_handler;
 mod HTTPrequestBuilder;
+mod HTTPclient;
 
 #[macro_use]
 extern crate rocket;
