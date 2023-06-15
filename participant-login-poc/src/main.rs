@@ -1,4 +1,5 @@
 mod irma_session_handler;
+mod HTTPrequestBuilder;
 
 #[macro_use]
 extern crate rocket;
@@ -50,19 +51,19 @@ async fn irma_disclose_id() -> TextStream![String] {
     }
 }
 
-/// Produce an infinite series of `"hello"`s, one per second.
-#[get("/infinite-hellos")]
-fn hello() -> TextStream![&'static str] {
-    TextStream! {
-        let mut interval = interval(Duration::from_secs(1));
-        loop {
-            yield "hello";
-            interval.tick().await;
-        }
-    }
+fn oauth_request(server_address: String, user_id: &String, spoof_check_secret: &String){
+    let request_builder=HTTPrequestBuilder::HTTPrequestBuilder::new (
+        server_address,
+        String::from("POST"),
+        String::from(""),
+        user_id,
+        spoof_check_secret
+    );
+    let request=request_builder.build(user_id, spoof_check_secret);
+    
 }
 
 #[launch]
 fn rocket() -> _ {
-    rocket::build().mount("/", routes![index, irma_disclose_id, hello])
+    rocket::build().mount("/", routes![index, irma_disclose_id])
 }
