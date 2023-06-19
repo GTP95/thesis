@@ -52,6 +52,15 @@ services:
       - ./identity_provider_resources/cert:/data/vendor/simplesamlphp/simplesamlphp/cert
       - ./identity_provider_resources/config:/data/vendor/simplesamlphp/simplesamlphp/config
 
+
+  pepinfra:
+    build:
+      context: .
+      dockerfile: Dockerfile.pepinfra
+    volumes:
+      - ./pep_code:/root/pep_code
+
+
 volumes:
   irma-schemes:
 
