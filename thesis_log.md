@@ -6,7 +6,7 @@ there? To answer I need to know:
 The idea would be to develop a component that sits in front of salesforce. It authenticates the user using IRMA and then retrieves the correct identifier. Problem:
 which component will then compute the pseudonym? To do that, you would need the private key that can't be given to the user. I would say that the component that
 manages the authentication with the user could also compute the pseudonym and send it to the user (using an encrypted connection).
-NOTE: Salesforce *does* have API access, but it also [depends on the edition]()(https://developer.salesforce.com/docs/atlas.en-us.242.0.api_rest.meta/api_rest/intro_rest_compatible_editions.htmi): "API access is available with Professional Edition, Performance Edition, Enterprise Edition, Unlimited Edition, and Developer Edition. For Professional
+NOTE: Salesforce *does* have API access, but it also [depends on the edition](https://developer.salesforce.com/docs/atlas.en-us.242.0.api_rest.meta/api_rest/intro_rest_compatible_editions.htmi): "API access is available with Professional Edition, Performance Edition, Enterprise Edition, Unlimited Edition, and Developer Edition. For Professional
 Edition, all requests for API access must be purchased and can be processed by contacting your Account Executive".
 Accessing salesforce is a no-go. New idea: issue IRMA card with the identifier during the "enrollment" phase of a study participant.
 PROBLEM: giving the participants their ID could reveal more than necessary. List of current ideas:
@@ -42,7 +42,7 @@ ACTUALLY, the problem was that I forgot the actual authenticaton flow. Here is h
 
 1. The user navigates to the website hosting the webapp and chooses to login with the Yivi app.
 2. The web app displays the IRMA QR code and an IRMA session happens. The server-side gets the user's token and encapsulates it into a SAML file. 
-3. That SAML file is sent to the user (actually the clien-side of the webapp).
+3. That SAML file is sent to the user (actually the client-side of the webapp).
 And from now on, the procedure is the same as the usual one:
 4. The webapp client-side presents the SAML file to the auth server
 5. The  auth server replies with an OAuth token
@@ -54,7 +54,7 @@ And from now on, the procedure is the same as the usual one:
 So in all this, I need to communicate directly with the auth server.
 
 To build an Identity Provider, I first found this: [simplesamlphp-module-authirma](https://github.com/privacybydesign/simplesamlphp-module-authirma). It is a plugin for SimpleSAMLphp that adds IRMA as an identity provider. But it is unmantained, and developed at a time where the IRMA web server and the IRMA API server where two separate components. While trying to make it work again, I stumbled upon the problem of getting the keys for the API and web servers. Probably the key is the same for both, as now the irmago server implements both, but I wasn't able to find the certificate in the required format inside my Docker container.  
-I then found this: [irma-idp](https://github.com/SURFnet/irma-idp). It is m ore recent, although it hasn't been updated in years too. But at least it targets the new irmago implementation that has bot web and API in the same piece of sw. But missing configuration instructions and again not able to find the required certificate (at least by trying the method reported in the README).
+I then found this: [irma-idp](https://github.com/SURFnet/irma-idp). It is more recent, although it hasn't been updated in years too. But at least it targets the new irmago implementation that has bot web and API in the same piece of sw. But missing configuration instructions and again not able to find the required certificate (at least by trying the method reported in the README).
 
 After talking with the PEP team, there are 3 possibilities:
 1. Write a plugin for SimpleSAMLphp to have an IdP using IRMA
@@ -62,7 +62,7 @@ After talking with the PEP team, there are 3 possibilities:
 communicates using SAML2.0 with the IdP (for now only SurfCONEXT) and, if the session between the two is successful, it sends some HTTP headers to the auth server
 with the session's result. So it would be possible to write a middleware that stays on the side of the Apache server on the same machine and if the IRMA
 authentication is successful sends to the auth server those HTTP headers. See `OAuthProvider::handleAuthorizationRequest` in 
-`~/git/core-master/authserver/OAuthprovider.cpp` for how those headers shoukld look like and how are used.
+`~/git/core-master/authserver/OAuthprovider.cpp` for how those headers should look like and how are used.
 3. Write a Rust middleware that implements SAML2.0 to communicate directly with Shibbolet.
 
 ### Possibilities evaluation
@@ -71,4 +71,11 @@ enough to use Rust just for this thesis it is an annoyance but not a real roadbl
 
 The second option has the advantage of letting me reuse the (little) Rust code I've already written. But then there would be two different ways to login depending on the user's role. In addition to this, it could be that the potential impact of a bug in my code would be more severe than in the case of a SimpleSAMLphp plugin  
 
-The last option is the hardest, and so the one more likely to go wrong from a security perspective.
+The last option is the hardest, and so the one more likely to go wrong from a security perspective. 
+
+Maybe also gluu could be a candidate for solution 1. Look [here][https://gluu.org/docs/gluu-server/4.0/authn-guide/customauthn/]
+
+Writing a SimpleSAMLphp plugin would require mixing PHP and JS code, due to the fact that there aren't currently maintained PHP libs for IRMA. But doing this could pose security issues, due to how I would have to exchange data between the PHP backend and the JS frontend.  It's also not a straightforward way do it. See [How to get JavaScript variable value in PHP](https://stackoverflow.com/questions/9789283/how-to-get-javascript-variable-value-in-php) and [yivi-frontend-packages's README](yivi-frontend-packages).Another way could be to revive [irma-requestor](https://github.com/privacybydesign/irma-requestor) by taking the latestversion from [here](https://github.com/joostd/irma-requestor). Let's see if this works. 
+Actually I don't even need irma-requestor, it was just a waste of time: it is actually easy to write code to directly query irmago's endpoints.
+Since writing a SimpleSAMLphp plugin is taking way too long, I'm considering also `gluu` and solution #2.
+Following Gluu's instruction to deploy their Docker containers fails. Asking for support and then learning how to extend it could take more time than option #2, o I'm now going to try it.
