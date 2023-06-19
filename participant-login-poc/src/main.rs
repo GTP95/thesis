@@ -11,6 +11,7 @@ use rocket::response::stream::TextStream;
 use rocket::response::{content, status};
 use rocket::tokio::time::{interval, sleep, Duration};
 use std::fs;
+use std::future::Future;
 use std::ops::Add;
 
 #[get("/")]
@@ -49,13 +50,20 @@ async fn irma_disclose_id() -> TextStream![String] {
             None => yield String::from("\nError: can't get attribute value")
         }
     }
+
 }
 
-fn oauth_request(server_address: String, user_id: &String, spoof_check_secret: &String){
-
+async fn oauth_request(server_address: &str, user_id: &str, spoof_check_secret: &str) {
+    let client = HTTPclient::HTTPclient::new(server_address, "Shib-Session-ID", spoof_check_secret);
+    let request_result = client.send_auth_request(&String::from(user_id), &String::from(spoof_check_secret)).await;
+    match request_result {
+        Ok(response) => println!("Response: {:?}", response),
+        Err(error) => println!("Error: {:?}", error)
+    }
 }
 
 #[launch]
 fn rocket() -> _ {
-    rocket::build().mount("/", routes![index, irma_disclose_id])
+    rocket::build().mount("/", routes![index, irma_disclose_id]);
+
 }
