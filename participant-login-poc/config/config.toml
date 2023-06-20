@@ -1,2 +1,3 @@
-path_to_spoof_check_secret_file = ''
+path_to_spoof_check_secret_file = '/home/giacomo/VirtualBox VMs/Cartella di passaggio/spoofKey'
 uid_field_name= 'uid'
+auth_server_address= 'http://localhost:16512'
