@@ -6,12 +6,10 @@ extern crate rocket;
 
 use crate::irma_session_handler::IrmaSessionHandler;
 use rocket::http::Status;
-use rocket::response::content::RawHtml;
 use rocket::response::stream::TextStream;
 use rocket::response::{content, status};
-use rocket::tokio::time::{interval, sleep, Duration};
+use rocket::tokio::time::{sleep, Duration};
 use std::fs;
-use std::future::Future;
 use std::ops::Add;
 
 #[get("/")]
@@ -64,6 +62,6 @@ async fn oauth_request(server_address: &str, user_id: &str, spoof_check_secret: 
 
 #[launch]
 fn rocket() -> _ {
-    rocket::build().mount("/", routes![index, irma_disclose_id]);
+    rocket::build().mount("/", routes![index, irma_disclose_id])
 
 }
