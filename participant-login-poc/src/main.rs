@@ -11,6 +11,7 @@ use rocket::response::{content, status};
 use rocket::tokio::time::{sleep, Duration};
 use std::fs;
 use std::ops::Add;
+use rocket::State;
 
 
 struct Config {
@@ -29,8 +30,14 @@ async fn index() -> status::Custom<content::RawHtml<String>> {
 }
 
 #[get("/disclose")]
-async fn irma_disclose_id() -> TextStream![String] {
+async fn irma_disclose_id(config: &State<Config>) -> TextStream![String] {
     let irma_session_handler = IrmaSessionHandler::new("http://localhost:8088");
+    let http_client = HTTPclient::HTTPclient::new(
+        &config.server_address,
+        "Shib-Session-ID",
+        &config.spoof_check_secret,
+    );
+
     let request_result = irma_session_handler
         .disclose_id(String::from("irma-demo.PEP.id.id"))
         .await;
@@ -38,7 +45,7 @@ async fn irma_disclose_id() -> TextStream![String] {
         yield request_result.qr;
 
         // Periodically poll if the session was succesfully concluded
-    let result = loop {
+        let result = loop {
         match request_result.client.result(&request_result.session.token).await {
             Ok(result) => break result,
             Err(irma::Error::SessionNotFinished(_)) => {}
@@ -54,9 +61,10 @@ async fn irma_disclose_id() -> TextStream![String] {
             Some(attribute_value) => yield String::from("\nLogging in with token ").add(attribute_value),
             None => yield String::from("\nError: can't get attribute value")
         }
+
+
+
     }
-
-
 }
 
 async fn oauth_request(server_address: &str, user_id: &str, spoof_check_secret: &str) {
@@ -70,22 +78,21 @@ async fn oauth_request(server_address: &str, user_id: &str, spoof_check_secret: 
 
 #[launch]
 fn rocket() -> _ {
-    //open config.toml configuartion file
+    //open and parse config.toml configuration file
     let config = fs::read_to_string("config/config.toml").expect("Error reading config/config.toml file");
-    //parse config.toml
     let config: toml::Value = toml::from_str(&config).expect("Error parsing config/config.toml file");
-    //get path_to_spoof_check_secret_file from config.toml
+
+    //Get configuration values from configuration file
     let path_to_spoof_check_secret_file = config["path_to_spoof_check_secret_file"]
         .as_str()
         .expect("Error parsing path_to_spoof_check_secret_file from config/config.toml");
-    //get uid_field_name from config.toml
     let uid_field_name = config["uid_field_name"]
         .as_str()
         .expect("Error parsing uid_field_name from config/config.toml");
-    //get server_address from config.toml
     let auth_server_address = config["auth_server_address"]
         .as_str()
         .expect("Error parsing auth_server_address from config/config.toml");
+
     //get spoof_check_secret from path_to_spoof_check_secret_file
     let spoof_check_secret = fs::read_to_string(path_to_spoof_check_secret_file)
         .expect("Error reading spoof_check_secret file indicated in config/config.toml");
