@@ -1,5 +1,5 @@
-mod irma_session_handler;
 mod HTTPclient;
+mod irma_session_handler;
 
 #[macro_use]
 extern crate rocket;
@@ -9,15 +9,20 @@ use rocket::http::Status;
 use rocket::response::stream::TextStream;
 use rocket::response::{content, status};
 use rocket::tokio::time::{sleep, Duration};
+use rocket::State;
 use std::fs;
 use std::ops::Add;
-use rocket::State;
-
+use tera::Tera;
 
 struct Config {
     server_address: String,
     user_id: String,
     spoof_check_secret: String,
+    uid_field_name: String
+}
+
+struct TemplateEngine{
+    tera: Tera
 }
 
 #[get("/")]
@@ -33,9 +38,9 @@ async fn index() -> status::Custom<content::RawHtml<String>> {
 async fn irma_disclose_id(config: &State<Config>) -> TextStream![String] {
     let irma_session_handler = IrmaSessionHandler::new("http://localhost:8088");
     let http_client = HTTPclient::HTTPclient::new(
-        &config.server_address,
-        "Shib-Session-ID",
-        &config.spoof_check_secret,
+        config.server_address.clone(),
+        config.uid_field_name.clone(),
+        config.spoof_check_secret.clone(),
     );
 
     let request_result = irma_session_handler
@@ -58,29 +63,42 @@ async fn irma_disclose_id(config: &State<Config>) -> TextStream![String] {
         let disclosed_attribute=&disclosed[0][0];
         let attribute_value=&disclosed_attribute.raw_value;
         match attribute_value{
-            Some(attribute_value) => yield String::from("\nLogging in with token ").add(attribute_value),
-            None => yield String::from("\nError: can't get attribute value")
+            Some(attribute_value) =>{
+                yield String::from("\nLogging in with token ").add(attribute_value);
+
+
+            }
+
+            None => {   //If no attribute is retrieved, show error and stop here
+                yield String::from("\nError: can't get attribute value");
+
+                }
         }
+
 
 
 
     }
 }
 
-async fn oauth_request(server_address: &str, user_id: &str, spoof_check_secret: &str) {
-    let client = HTTPclient::HTTPclient::new(server_address, "Shib-Session-ID", spoof_check_secret);
-    let request_result = client.send_auth_request(&String::from(user_id), &String::from(spoof_check_secret)).await;
+async fn oauth_request(server_address: String, user_id: String, spoof_check_secret: String, uid_field_name: String) {
+    let client = HTTPclient::HTTPclient::new(server_address, uid_field_name, spoof_check_secret.clone());
+    let request_result = client
+        .send_auth_request(&String::from(user_id), &spoof_check_secret)
+        .await;
     match request_result {
         Ok(response) => println!("Response: {:?}", response),
-        Err(error) => println!("Error: {:?}", error)
+        Err(error) => println!("Error: {:?}", error),
     }
 }
 
 #[launch]
 fn rocket() -> _ {
     //open and parse config.toml configuration file
-    let config = fs::read_to_string("config/config.toml").expect("Error reading config/config.toml file");
-    let config: toml::Value = toml::from_str(&config).expect("Error parsing config/config.toml file");
+    let config =
+        fs::read_to_string("config/config.toml").expect("Error reading config/config.toml file");
+    let config: toml::Value =
+        toml::from_str(&config).expect("Error parsing config/config.toml file");
 
     //Get configuration values from configuration file
     let path_to_spoof_check_secret_file = config["path_to_spoof_check_secret_file"]
@@ -92,15 +110,29 @@ fn rocket() -> _ {
     let auth_server_address = config["auth_server_address"]
         .as_str()
         .expect("Error parsing auth_server_address from config/config.toml");
+    let uid_field_name= config["uid_field_name"]
+        .as_str()
+        .expect("Error parsing uid_field_name from config/config.toml");
 
     //get spoof_check_secret from path_to_spoof_check_secret_file
     let spoof_check_secret = fs::read_to_string(path_to_spoof_check_secret_file)
         .expect("Error reading spoof_check_secret file indicated in config/config.toml");
-    //instantiate HTTPclient
-    let client = HTTPclient::HTTPclient::new(auth_server_address, "Shib-Session-ID", spoof_check_secret.as_str());
-    rocket::build().mount("/", routes![index, irma_disclose_id]).manage(Config {
-        server_address: String::from(auth_server_address),
-        user_id: String::from(uid_field_name),
-        spoof_check_secret: spoof_check_secret,
-    })
+
+    //parse Tera templates
+    let tera = match Tera::new("templates/**/*.html") {
+        Ok(t) => t,
+        Err(e) => {
+            println!("Parsing error(s): {}", e);
+            ::std::process::exit(1);
+        }
+    };
+
+    rocket::build()
+        .mount("/", routes![index, irma_disclose_id])
+        .manage(Config {
+            server_address: String::from(auth_server_address),
+            user_id: String::from(uid_field_name),
+            spoof_check_secret: spoof_check_secret,
+            uid_field_name: String::from(uid_field_name)
+        }).manage(TemplateEngine{tera})
 }
