@@ -8,16 +8,16 @@ pub struct HTTPclient {
 }
 
 impl HTTPclient {
-    pub fn new(url: &str, uid_field_name: &str, spoof_check_secret: &str)-> HTTPclient{
+    pub fn new(url: String, uid_field_name: String, spoof_check_secret: String)-> HTTPclient{
         HTTPclient{
             client: reqwest::Client::new(),
-            url: String::from(url),
-            uid_field_name: String::from(uid_field_name),
-            spoof_check_secret: String::from(spoof_check_secret)
+            url: url,
+            uid_field_name: uid_field_name,
+            spoof_check_secret: spoof_check_secret
         }
     }
 
-    pub async fn send_auth_request(&self, uid: &String, spoof_check_secret: &String) -> Result<reqwest::Response, reqwest::Error> {
+    pub async fn send_auth_request(&self, uid: &str, spoof_check_secret: &str) -> Result<reqwest::Response, reqwest::Error> {
         let request = reqwest::Client::new()
             .post(&self.url)
             .header("Shib-Spoof-Check", spoof_check_secret)
