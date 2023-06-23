@@ -6,8 +6,8 @@ pub(crate) struct IrmaSessionHandler {
     client: IrmaClient,
 }
 
+///My own type to return both the QR code and the session so I can check the session's status after the request. Contains also a refrence to the client.
 pub(crate) struct RequestResult {
-    //My own type to return both the QR code and the session so I can check the session's status after the request
     pub(crate) qr: String,
     pub(crate) session: SessionData,
     pub(crate) client: IrmaClient,
