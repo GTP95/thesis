@@ -35,50 +35,21 @@ async fn index() -> status::Custom<content::RawHtml<String>> {
 }
 
 #[get("/disclose")]
-async fn irma_disclose_id(config: &State<Config>) -> TextStream![String] {
+async fn irma_disclose_id(template_engine: &State<TemplateEngine>) -> content::RawHtml<String> {
     let irma_session_handler = IrmaSessionHandler::new("http://localhost:8088");
-    let http_client = HTTPclient::HTTPclient::new(
-        config.server_address.clone(),
-        config.uid_field_name.clone(),
-        config.spoof_check_secret.clone(),
-    );
+
 
     let request_result = irma_session_handler
         .disclose_id(String::from("irma-demo.PEP.id.id"))
         .await;
-    TextStream! {
-        yield request_result.qr;
 
-        // Periodically poll if the session was succesfully concluded
-        let result = loop {
-        match request_result.client.result(&request_result.session.token).await {
-            Ok(result) => break result,
-            Err(irma::Error::SessionNotFinished(_)) => {}
-            Err(v) => panic!("{}", v),
-        }
+    let qr= request_result.qr;
 
-        sleep(Duration::from_secs(2)).await;
-    };
-        let disclosed=result.disclosed;
-        let disclosed_attribute=&disclosed[0][0];
-        let attribute_value=&disclosed_attribute.raw_value;
-        match attribute_value{
-            Some(attribute_value) =>{
-                yield String::from("\nLogging in with token ").add(attribute_value);
-
-
-            }
-
-            None => {   //If no attribute is retrieved, show error and stop here
-                yield String::from("\nError: can't get attribute value");
-
-                }
-        }
-
-
-
-
-    }
+    //render Tera template showing the qr code
+    let mut context = tera::Context::new();
+    context.insert("qr", &qr);
+    let template = template_engine.tera.render("disclose.html", &context).unwrap();
+    content::RawHtml(template)
 }
 
 async fn oauth_request(server_address: String, user_id: String, spoof_check_secret: String, uid_field_name: String) {
