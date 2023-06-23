@@ -90,13 +90,15 @@ fn rocket() -> _ {
         .expect("Error reading spoof_check_secret file indicated in config/config.toml");
 
     //parse Tera templates
-    let tera = match Tera::new("templates/**/*.html") {
+    let mut tera = match Tera::new("templates/**/*.html") {
         Ok(t) => t,
         Err(e) => {
             println!("Parsing error(s): {}", e);
             ::std::process::exit(1);
         }
     };
+
+    tera.autoescape_on(vec![]); //Turns escaping OFF, otherwise the SVG containing the QR code in the disclose page gets displayed as text (i.e, the text description of the SVG format, no image)
 
     rocket::build()
         .mount("/", routes![index, irma_disclose_id])
