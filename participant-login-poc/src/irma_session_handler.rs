@@ -1,5 +1,5 @@
 use irma::{AttributeRequest, DisclosureRequestBuilder, IrmaClient, IrmaRequest, SessionData};
-use qrcode::render::unicode;
+use qrcode::render::svg;
 use qrcode::QrCode;
 
 pub(crate) struct IrmaSessionHandler {
@@ -45,15 +45,17 @@ impl IrmaSessionHandler {
         //    match self.client.result(&session.token).await {
     }
 
+    /// Renders a QR code containing the IRMA session pointer
     fn generate_qr(&self, sessionptr: String) -> String {
-        //TODO: make this generate an image instead of a string, so that I can embed it into the web page
-        // Render a qr
         let code = QrCode::new(sessionptr).unwrap();
-        let image = code
-            .render::<unicode::Dense1x2>()
-            .dark_color(unicode::Dense1x2::Light)
-            .light_color(unicode::Dense1x2::Dark)
+        let image = code.render()
+            .min_dimensions(250, 250)
+            .dark_color(svg::Color("#800000"))
+            .light_color(svg::Color("#ffff80"))
             .build();
+
+        //Remove the first part, so that I can use the result directly into HTML code
+        let image=image.replace("<?xml version=\"1.0\" standalone=\"yes\"?>", "");
         return image;
     }
 
