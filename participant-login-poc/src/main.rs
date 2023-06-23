@@ -12,6 +12,7 @@ use rocket::tokio::time::{sleep, Duration};
 use rocket::State;
 use std::fs;
 use std::ops::Add;
+use irma::{SessionStatus, SessionToken};
 use tera::Tera;
 
 struct Config {
@@ -24,6 +25,7 @@ struct Config {
 struct TemplateEngine{
     tera: Tera
 }
+
 
 #[get("/")]
 async fn index() -> status::Custom<content::RawHtml<String>> {
@@ -52,15 +54,29 @@ async fn irma_disclose_id(template_engine: &State<TemplateEngine>) -> content::R
     content::RawHtml(template)
 }
 
-async fn oauth_request(server_address: String, user_id: String, spoof_check_secret: String, uid_field_name: String) {
-    let client = HTTPclient::HTTPclient::new(server_address, uid_field_name, spoof_check_secret.clone());
-    let request_result = client
-        .send_auth_request(&String::from(user_id), &spoof_check_secret)
-        .await;
-    match request_result {
-        Ok(response) => println!("Response: {:?}", response),
-        Err(error) => println!("Error: {:?}", error),
+#[get("/status/<session_id>")]
+async fn getStatus(session_id: String, irma_session_handler: &State<IrmaSessionHandler>) -> status::Custom<content::RawText<String>>{
+    let session_token=SessionToken(session_id);
+    let sesion_result =irma_session_handler.get_status(&session_token).await;
+    match sesion_result {
+        Ok(session_result) => {
+            match  session_result.status {
+                SessionStatus::Initialized => {status::Custom(Status::Accepted, content::RawText(String::from("Initialized")))}
+                SessionStatus::Pairing => {status::Custom(Status::Accepted, content::RawText(String::from("Pairing")))}
+                SessionStatus::Connected => {status::Custom(Status::Accepted, content::RawText(String::from("Connected")))}
+                SessionStatus::Cancelled => {status::Custom(Status::Accepted, content::RawText(String::from("Cancelled")))}
+                SessionStatus::Done => {status::Custom(Status::Accepted, content::RawText(String::from("Done")))}
+                SessionStatus::Timeout => {status::Custom(Status::Accepted, content::RawText(String::from("Timeout")))}
+            }
+
+
+        }
+        Err(error) => {
+            let error=error.to_string();
+            status::Custom(Status::Accepted, content::RawText(error))
+        }
     }
+
 }
 
 #[launch]
@@ -100,6 +116,8 @@ fn rocket() -> _ {
 
     tera.autoescape_on(vec![]); //Turns escaping OFF, otherwise the SVG containing the QR code in the disclose page gets displayed as text (i.e, the text description of the SVG format, no image)
 
+    let irma_session_handler = IrmaSessionHandler::new("http://localhost:8088");
+
     rocket::build()
         .mount("/", routes![index, irma_disclose_id])
         .manage(Config {
@@ -107,5 +125,17 @@ fn rocket() -> _ {
             user_id: String::from(uid_field_name),
             spoof_check_secret: spoof_check_secret,
             uid_field_name: String::from(uid_field_name)
-        }).manage(TemplateEngine{tera})
+        }).manage(TemplateEngine{tera}).manage(irma_session_handler)
+}
+
+///Sends an HTTP request to PEP's auth server contsining the headers with the disclosed attribute
+async fn oauth_request(server_address: String, user_id: String, spoof_check_secret: String, uid_field_name: String) {
+    let client = HTTPclient::HTTPclient::new(server_address, uid_field_name, spoof_check_secret.clone());
+    let request_result = client
+        .send_auth_request(&String::from(user_id), &spoof_check_secret)
+        .await;
+    match request_result {
+        Ok(response) => println!("Response: {:?}", response),
+        Err(error) => println!("Error: {:?}", error),
+    }
 }

@@ -1,4 +1,4 @@
-use irma::{AttributeRequest, DisclosureRequestBuilder, IrmaClient, IrmaRequest, SessionData};
+use irma::{AttributeRequest, DisclosureRequestBuilder, Error, IrmaClient, IrmaRequest, SessionData, SessionResult, SessionToken};
 use qrcode::render::svg;
 use qrcode::QrCode;
 
@@ -43,6 +43,14 @@ impl IrmaSessionHandler {
         // Periodically poll if the session was successfully concluded
         //loop {
         //    match self.client.result(&session.token).await {
+    }
+
+    /// Queries the server for the session's status.
+    /// # Arguments
+    /// * `session_token` - The session token returned by the server when the session was started
+    pub async fn get_status(&self, session_token: &SessionToken) -> Result<SessionResult, Error> {
+            let result=self.client.result(session_token).await;
+            return result;
     }
 
     /// Renders a QR code containing the IRMA session pointer
