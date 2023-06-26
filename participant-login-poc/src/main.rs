@@ -83,18 +83,14 @@ async fn get_status(session_id: String, irma_session_handler: &State<IrmaSession
 }
 
 #[get("/success/<session_id>")]
-async fn success(session_id: String, irma_session_handler: &State<IrmaSessionHandler>) -> status::Custom<content::RawText<String>> {
+async fn success(session_id: String, irma_session_handler: &State<IrmaSessionHandler>, template_engine: &State<TemplateEngine>) -> status::Custom<content::RawHtml<String>> {
     let session_token = SessionToken(session_id);
-    let sesion_result = irma_session_handler.get_status(&session_token).await;
-
-    match sesion_result {
-        Ok(session_result) => {
-            match session_result.status {
-                SessionStatus::Done => { status::Custom(Status::Accepted, content::RawText(String::from("Done"))) }
-                _ => { status::Custom(Status::Accepted, content::RawText(String::from("Not done"))) }
-            }
-        }
-    }
+    let session_result = irma_session_handler.get_status(&session_token).await;
+    let disclosed_attribute=session_result.unwrap().disclosed[0][0].clone().raw_value.unwrap(); //TODO: see if this expression can be simplified
+    let mut context = tera::Context::new();
+    context.insert("disclosed_attribute", &disclosed_attribute);
+    let template = template_engine.tera.render("success.html", &context).unwrap();
+    status::Custom(Status::Accepted, content::RawHtml(template))
 }
 
 
@@ -139,7 +135,7 @@ fn rocket() -> _ {
     let irma_session_handler = IrmaSessionHandler::new("http://localhost:8088");
 
     rocket::build()
-        .mount("/", routes![index, irma_disclose_id, get_status])
+        .mount("/", routes![index, irma_disclose_id, get_status, success])
         .manage(Config {
             server_address: String::from(auth_server_address),
             user_id: String::from(uid_field_name),
