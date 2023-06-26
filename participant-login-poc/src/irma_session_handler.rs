@@ -41,7 +41,9 @@ impl IrmaSessionHandler {
         return result;
     }
 
-    /// Queries the server for the session's status.
+    /// Queries the server for the session's status. Returns a SessionResult object containing the status
+    /// and possibly other data, including the disclosed attribute(s), depending on the status.
+    /// See https://irma.app/docs/api-irma-server/#get-session-requestortoken-result for more details.
     /// # Arguments
     /// * `session_token` - The session token returned by the server when the session was started
     pub async fn get_status(&self, session_token: &SessionToken) -> Result<SessionResult, Error> {
