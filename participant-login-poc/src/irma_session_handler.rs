@@ -6,7 +6,7 @@ pub(crate) struct IrmaSessionHandler {
     client: IrmaClient,
 }
 
-///My own type to return both the QR code and the session so I can check the session's status after the request. Contains also a refrence to the client.
+///My own type to return both the QR code and the session so I can check the session's status after the request. Contains also a reference to the client.
 pub(crate) struct RequestResult {
     pub(crate) qr: String,
     pub(crate) session: SessionData,
@@ -39,10 +39,6 @@ impl IrmaSessionHandler {
             client: self.client.clone(),
         };
         return result;
-
-        // Periodically poll if the session was successfully concluded
-        //loop {
-        //    match self.client.result(&session.token).await {
     }
 
     /// Queries the server for the session's status.
@@ -67,6 +63,7 @@ impl IrmaSessionHandler {
         return image;
     }
 
+    /// Builds a disclosure request for the specified credential
     fn build_disclosure_request(&self, credential: String) -> IrmaRequest {
         //Description of the attribute we want to request
         let attribute_request = AttributeRequest::Simple(credential);
