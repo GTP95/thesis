@@ -1,6 +1,6 @@
-<! A page that gets updated via AJAX>
-<! other possible idea: redirect the user after the QR code has been scanned. Need to create >
-<!another endpoint so that JS code in this page can poll the server to see if the user has disclosed the attributes>
+<!-- A page that gets updated via AJAX -->
+<!-- other possible idea: redirect the user after the QR code has been scanned. Need to create -->
+<!-- another endpoint so that JS code in this page can poll the server to see if the user has disclosed the attributes -->
 <HTML>
 <HEAD>
     <TITLE>YIVI LOGIN</TITLE>
@@ -10,17 +10,21 @@
 <H1>YIVI LOGIN</H1>
 <p>Scan the QR code with your YIVI app</p>
 {{qr}}
-<! a JS script that polls the /status endpoint to see if the user has disclosed the attributes>
+<!-- repeat here the session ID for convenience, hidden for aesthetic reasons. It's the same as the one in the QR code so no security issue here -->
+<p hidden id="session_id">{{session_id}}</p>
+
+<!-- a JS script that polls the /status endpoint to see if the user has disclosed the attributes -->
 <script>
     $(document).ready(function () {
+        const session_id = $("#session_id").text();
         const interval = setInterval(function () {
             $.ajax({
-                url: "/status",
+                url: "/status/"+session_id,
                 type: "GET",
                 success: function (result) {
-                    if (result == "True") {
+                    if (result === "Done") {
                         clearInterval(interval);
-                        window.location.href = "/success";
+                        window.location.href = "/success/"+session_id;
                     }
                 }
             });

@@ -50,16 +50,19 @@ async fn irma_disclose_id(template_engine: &State<TemplateEngine>) -> content::R
     //render Tera template showing the qr code
     let mut context = tera::Context::new();
     context.insert("qr", &qr);
+    context.insert("session_id", &request_result.session.token.0);
     let template = template_engine.tera.render("disclose.html", &context).unwrap();
     content::RawHtml(template)
 }
 
 #[get("/status/<session_id>")]
-async fn getStatus(session_id: String, irma_session_handler: &State<IrmaSessionHandler>) -> status::Custom<content::RawText<String>>{
+async fn get_status(session_id: String, irma_session_handler: &State<IrmaSessionHandler>) -> status::Custom<content::RawText<String>>{
     let session_token=SessionToken(session_id);
     let sesion_result =irma_session_handler.get_status(&session_token).await;
+
     match sesion_result {
         Ok(session_result) => {
+
             match  session_result.status {
                 SessionStatus::Initialized => {status::Custom(Status::Accepted, content::RawText(String::from("Initialized")))}
                 SessionStatus::Pairing => {status::Custom(Status::Accepted, content::RawText(String::from("Pairing")))}
@@ -68,16 +71,33 @@ async fn getStatus(session_id: String, irma_session_handler: &State<IrmaSessionH
                 SessionStatus::Done => {status::Custom(Status::Accepted, content::RawText(String::from("Done")))}
                 SessionStatus::Timeout => {status::Custom(Status::Accepted, content::RawText(String::from("Timeout")))}
             }
-
-
         }
+
+
         Err(error) => {
             let error=error.to_string();
-            status::Custom(Status::Accepted, content::RawText(error))
+            status::Custom(Status::InternalServerError, content::RawText(error))
         }
     }
 
 }
+
+#[get("/success/<session_id>")]
+async fn success(session_id: String, irma_session_handler: &State<IrmaSessionHandler>) -> status::Custom<content::RawText<String>> {
+    let session_token = SessionToken(session_id);
+    let sesion_result = irma_session_handler.get_status(&session_token).await;
+
+    match sesion_result {
+        Ok(session_result) => {
+            match session_result.status {
+                SessionStatus::Done => { status::Custom(Status::Accepted, content::RawText(String::from("Done"))) }
+                _ => { status::Custom(Status::Accepted, content::RawText(String::from("Not done"))) }
+            }
+        }
+    }
+}
+
+
 
 #[launch]
 fn rocket() -> _ {
@@ -119,7 +139,7 @@ fn rocket() -> _ {
     let irma_session_handler = IrmaSessionHandler::new("http://localhost:8088");
 
     rocket::build()
-        .mount("/", routes![index, irma_disclose_id])
+        .mount("/", routes![index, irma_disclose_id, get_status])
         .manage(Config {
             server_address: String::from(auth_server_address),
             user_id: String::from(uid_field_name),
