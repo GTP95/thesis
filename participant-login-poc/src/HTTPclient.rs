@@ -1,5 +1,3 @@
-use reqwest;
-
 pub struct HTTPclient {
     pub client: reqwest::Client,
     pub url: String,
