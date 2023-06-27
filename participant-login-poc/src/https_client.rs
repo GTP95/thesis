@@ -21,7 +21,9 @@ impl HttpsClient {
             .https_only(true)
             //Currently, PEP only supports TLSv1.2, forcing that version
             .min_tls_version(reqwest::tls::Version::TLS_1_2)
-            .max_tls_version(reqwest::tls::Version::TLS_1_2);
+            .max_tls_version(reqwest::tls::Version::TLS_1_2)
+            .http2_prior_knowledge()   //force http2
+            .connection_verbose(true); //print verbose connection info for debugging
         let client= client_builder.build().expect("Error building HTTPS client");
 
         HttpsClient {

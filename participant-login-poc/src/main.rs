@@ -14,6 +14,7 @@ use rocket::State;
 use std::fs;
 use std::ops::Add;
 use irma::{SessionStatus, SessionToken};
+use rocket::response::content::RawHtml;
 use tera::Tera;
 
 struct Config {
@@ -96,6 +97,12 @@ async fn success(session_id: String, irma_session_handler: &State<IrmaSessionHan
     status::Custom(Status::Accepted, content::RawHtml(template))
 }
 
+#[catch(404)]
+fn not_found() -> RawHtml<String> {
+    let not_found = fs::read_to_string("static/notfound.html");
+    RawHtml(not_found.expect("Error reading 404 page"))
+}
+
 
 
 #[launch]
@@ -141,6 +148,8 @@ fn rocket() -> _ {
 
     let irma_session_handler = IrmaSessionHandler::new("http://localhost:8088");
     let https_client = https_client::HttpsClient::new(auth_server_address.parse().unwrap(), uid_field_name.parse().unwrap(), spoof_check_secret.parse().unwrap(), path_to_root_ca_certificate.parse().unwrap());
+
+    simple_logger::SimpleLogger::new().env().init().unwrap();   //logging, see https://docs.rs/simple_logger/4.2.0/simple_logger/
 
     rocket::build()
         .mount("/", routes![index, irma_disclose_id, get_status, success])
