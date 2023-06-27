@@ -1,10 +1,11 @@
-mod HttpsClient;
+mod https_client;
 mod irma_session_handler;
 
 #[macro_use]
 extern crate rocket;
 
 use crate::irma_session_handler::IrmaSessionHandler;
+use crate::https_client::HttpsClient;
 use rocket::http::Status;
 use rocket::response::stream::TextStream;
 use rocket::response::{content, status};
@@ -83,11 +84,11 @@ async fn get_status(session_id: String, irma_session_handler: &State<IrmaSession
 }
 
 #[get("/success/<session_id>")]
-async fn success(session_id: String, irma_session_handler: &State<IrmaSessionHandler>, template_engine: &State<TemplateEngine>, config: &State<Config>) -> status::Custom<content::RawHtml<String>> {
+async fn success(session_id: String, irma_session_handler: &State<IrmaSessionHandler>, template_engine: &State<TemplateEngine>, config: &State<Config>, https_client: &State<HttpsClient>) -> status::Custom<content::RawHtml<String>> {
     let session_token = SessionToken(session_id);
     let session_result = irma_session_handler.get_status(&session_token).await;
     let disclosed_attribute=session_result.unwrap().disclosed[0][0].clone().raw_value.unwrap(); //TODO: see if this expression can be simplified
-    let request=oauth_request(&config.server_address, &disclosed_attribute, &config.spoof_check_secret, &config.uid_field_name);
+    let request=oauth_request(&config.server_address, &disclosed_attribute, &config.spoof_check_secret, &config.uid_field_name, &https_client);
     let mut context = tera::Context::new();
     context.insert("disclosed_attribute", &disclosed_attribute);
     let template = template_engine.tera.render("success.html", &context).unwrap();
@@ -109,6 +110,9 @@ fn rocket() -> _ {
     let path_to_spoof_check_secret_file = config["path_to_spoof_check_secret_file"]
         .as_str()
         .expect("Error parsing path_to_spoof_check_secret_file from config/config.toml");
+    let path_to_root_ca_certificate=config["path_to_root_ca_certificate"]
+        .as_str()
+        .expect("Error parsing path_to_root_ca_certificate from config/config.toml");
     let uid_field_name = config["uid_field_name"]
         .as_str()
         .expect("Error parsing uid_field_name from config/config.toml");
@@ -136,6 +140,7 @@ fn rocket() -> _ {
     tera.autoescape_on(vec![]); //Turns escaping OFF, otherwise the SVG containing the QR code in the disclose page gets displayed as text (i.e, the text description of the SVG format, no image)
 
     let irma_session_handler = IrmaSessionHandler::new("http://localhost:8088");
+    let https_client = https_client::HttpsClient::new(auth_server_address.parse().unwrap(), uid_field_name.parse().unwrap(), spoof_check_secret.parse().unwrap(), path_to_root_ca_certificate.parse().unwrap());
 
     rocket::build()
         .mount("/", routes![index, irma_disclose_id, get_status, success])
@@ -144,12 +149,15 @@ fn rocket() -> _ {
             user_id: String::from(uid_field_name),
             spoof_check_secret: spoof_check_secret,
             uid_field_name: String::from(uid_field_name)
-        }).manage(TemplateEngine{tera}).manage(irma_session_handler)
+        })
+        .manage(TemplateEngine{tera})
+        .manage(irma_session_handler)
+        .manage(https_client)
 }
 
 ///Sends an HTTP request to PEP's auth server containing the headers with the disclosed attribute
-async fn oauth_request(server_address: &str, user_id: &str, spoof_check_secret: &str, uid_field_name: &str) {
-    let client = HttpsClient::HttpsClient::new(server_address.parse().unwrap(), uid_field_name.parse().unwrap(), spoof_check_secret.parse().unwrap());
+async fn oauth_request(server_address: &str, user_id: &str, spoof_check_secret: &str, uid_field_name: &str, client: &HttpsClient) {
+
     let request_result = client
         .send_auth_request(&String::from(user_id), &spoof_check_secret)
         .await;
