@@ -1,13 +1,13 @@
-pub struct HTTPclient {
+pub struct HttpsClient {
     pub client: reqwest::Client,
     pub url: String,
     uid_field_name: String,
     spoof_check_secret: String
 }
 
-impl HTTPclient {
-    pub fn new(url: String, uid_field_name: String, spoof_check_secret: String)-> HTTPclient{
-        HTTPclient{
+impl HttpsClient {
+    pub fn new(url: String, uid_field_name: String, spoof_check_secret: String)-> HttpsClient {
+        HttpsClient {
             client: reqwest::Client::new(),
             url: url,
             uid_field_name: uid_field_name,
@@ -20,7 +20,7 @@ impl HTTPclient {
             .post(&self.url)
             .header("Shib-Spoof-Check", spoof_check_secret)
             .header(self.uid_field_name.clone(), uid)
-            .body("")
+            .body("Just some data to complete message")
             .send()
             .await?;
         Ok(request)
