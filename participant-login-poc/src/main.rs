@@ -1,4 +1,4 @@
-mod HTTPclient;
+mod HttpsClient;
 mod irma_session_handler;
 
 #[macro_use]
@@ -83,13 +83,15 @@ async fn get_status(session_id: String, irma_session_handler: &State<IrmaSession
 }
 
 #[get("/success/<session_id>")]
-async fn success(session_id: String, irma_session_handler: &State<IrmaSessionHandler>, template_engine: &State<TemplateEngine>) -> status::Custom<content::RawHtml<String>> {
+async fn success(session_id: String, irma_session_handler: &State<IrmaSessionHandler>, template_engine: &State<TemplateEngine>, config: &State<Config>) -> status::Custom<content::RawHtml<String>> {
     let session_token = SessionToken(session_id);
     let session_result = irma_session_handler.get_status(&session_token).await;
     let disclosed_attribute=session_result.unwrap().disclosed[0][0].clone().raw_value.unwrap(); //TODO: see if this expression can be simplified
+    let request=oauth_request(&config.server_address, &disclosed_attribute, &config.spoof_check_secret, &config.uid_field_name);
     let mut context = tera::Context::new();
     context.insert("disclosed_attribute", &disclosed_attribute);
     let template = template_engine.tera.render("success.html", &context).unwrap();
+    request.await;
     status::Custom(Status::Accepted, content::RawHtml(template))
 }
 
@@ -120,7 +122,8 @@ fn rocket() -> _ {
     //get spoof_check_secret from path_to_spoof_check_secret_file
     let spoof_check_secret = fs::read_to_string(path_to_spoof_check_secret_file)
         .expect("Error reading spoof_check_secret file indicated in config/config.toml");
-
+    //remove eventual withespace characters, including newlines
+    let spoof_check_secret= spoof_check_secret.trim().to_string();
     //parse Tera templates
     let mut tera = match Tera::new("templates/**/*.html") {
         Ok(t) => t,
@@ -144,14 +147,21 @@ fn rocket() -> _ {
         }).manage(TemplateEngine{tera}).manage(irma_session_handler)
 }
 
-///Sends an HTTP request to PEP's auth server contsining the headers with the disclosed attribute
-async fn oauth_request(server_address: String, user_id: String, spoof_check_secret: String, uid_field_name: String) {
-    let client = HTTPclient::HTTPclient::new(server_address, uid_field_name, spoof_check_secret.clone());
+///Sends an HTTP request to PEP's auth server containing the headers with the disclosed attribute
+async fn oauth_request(server_address: &str, user_id: &str, spoof_check_secret: &str, uid_field_name: &str) {
+    let client = HttpsClient::HttpsClient::new(server_address.parse().unwrap(), uid_field_name.parse().unwrap(), spoof_check_secret.parse().unwrap());
     let request_result = client
         .send_auth_request(&String::from(user_id), &spoof_check_secret)
         .await;
     match request_result {
         Ok(response) => println!("Response: {:?}", response),
-        Err(error) => println!("Error: {:?}", error),
+        Err(error) => {
+            println!("Error: {:?}", error);
+            println!("user_id: {:?}", user_id);
+            println!("uid_field_name: {:?}", uid_field_name);
+            println!("spoof_check_secret: {:?}", spoof_check_secret);
+
+        },
     }
 }
+
