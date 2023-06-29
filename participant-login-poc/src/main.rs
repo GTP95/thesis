@@ -153,6 +153,7 @@ fn rocket() -> _ {
 
     rocket::build()
         .mount("/", routes![index, irma_disclose_id, get_status, success])
+        .register("/", catchers![not_found])
         .manage(Config {
             server_address: String::from(auth_server_address),
             user_id: String::from(uid_field_name),
