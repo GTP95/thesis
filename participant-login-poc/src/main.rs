@@ -129,6 +129,9 @@ fn rocket() -> _ {
     let uid_field_name= config["uid_field_name"]
         .as_str()
         .expect("Error parsing uid_field_name from config/config.toml");
+    let irma_server_address= config["irma_server_address"]
+        .as_str()
+        .expect("Error parsing irma_server_address from config/config.toml");
 
     //get spoof_check_secret from path_to_spoof_check_secret_file
     let spoof_check_secret = fs::read_to_string(path_to_spoof_check_secret_file)
@@ -146,7 +149,7 @@ fn rocket() -> _ {
 
     tera.autoescape_on(vec![]); //Turns escaping OFF, otherwise the SVG containing the QR code in the disclose page gets displayed as text (i.e, the text description of the SVG format, no image)
 
-    let irma_session_handler = IrmaSessionHandler::new("http://localhost:8088");
+    let irma_session_handler = IrmaSessionHandler::new(irma_server_address);
     let https_client = https_client::HttpsClient::new(auth_server_address.parse().unwrap(), uid_field_name.parse().unwrap(), spoof_check_secret.parse().unwrap(), path_to_root_ca_certificate.parse().unwrap());
 
     simple_logger::SimpleLogger::new().env().init().unwrap();   //logging, see https://docs.rs/simple_logger/4.2.0/simple_logger/
