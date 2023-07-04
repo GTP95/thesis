@@ -1,11 +1,11 @@
-mod https_client;
+mod http_client;
 mod irma_session_handler;
 
 #[macro_use]
 extern crate rocket;
 
 use crate::irma_session_handler::IrmaSessionHandler;
-use crate::https_client::HttpsClient;
+use crate::http_client::HttpsClient;
 use rocket::http::Status;
 use rocket::response::stream::TextStream;
 use rocket::response::{content, status};
@@ -150,7 +150,7 @@ fn rocket() -> _ {
     tera.autoescape_on(vec![]); //Turns escaping OFF, otherwise the SVG containing the QR code in the disclose page gets displayed as text (i.e, the text description of the SVG format, no image)
 
     let irma_session_handler = IrmaSessionHandler::new(irma_server_address);
-    let https_client = https_client::HttpsClient::new(auth_server_address.parse().unwrap(), uid_field_name.parse().unwrap(), spoof_check_secret.parse().unwrap(), path_to_root_ca_certificate.parse().unwrap());
+    let https_client = http_client::HttpsClient::new(auth_server_address.parse().unwrap(), uid_field_name.parse().unwrap(), spoof_check_secret.parse().unwrap(), path_to_root_ca_certificate.parse().unwrap());
 
     simple_logger::SimpleLogger::new().env().init().unwrap();   //logging, see https://docs.rs/simple_logger/4.2.0/simple_logger/
 

@@ -17,9 +17,6 @@ impl HttpsClient {
         let buf= read(root_ca_certificate_path).expect("Error reading root CA certificate");
         let cert = reqwest::Certificate::from_pem(&buf).expect("Error parsing root CA certificate");
         let client_builder=reqwest::Client::builder()
-            .https_only(true)
-            .add_root_certificate(cert)
-            .min_tls_version(reqwest::tls::Version::TLS_1_2)
             .connection_verbose(true); //print verbose connection info for debugging
         let client= client_builder.build().expect("Error building HTTPS client");
 
