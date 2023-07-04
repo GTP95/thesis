@@ -23,7 +23,7 @@ services:
     volumes:
       # make IRMA schemes persistent, so I can add my own
       - irma-schemes:/root/.local/share/irma/irma_configuration
-    networks: 
+    networks:
       - irma-network
 
   irmabuilder:
@@ -57,8 +57,8 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.pepinfra
-    volumes:
-      - ./pep_code:/root/pep_code
+    ports:
+      - 8080:8080
 
 
 volumes:
