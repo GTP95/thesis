@@ -1,26 +1,29 @@
 use std::fs::read;
+use rand::{Rng, rngs, SeedableRng};
+use rand::rngs::StdRng;
+use sha256::digest;
 
-pub struct HttpsClient {
+pub struct HttpClient {
     pub client: reqwest::Client,
     pub url: String,
     uid_field_name: String,
     spoof_check_secret: String
 }
 
-impl HttpsClient {
+impl HttpClient {
     /// Creates a new HTTPS client
     /// * `url` - The URL to send the authentication request to
     /// * `uid_field_name` - The name of the HTTP header that contains the user ID
     /// * `spoof_check_secret` - The secret to use for the Shibboleth spoof check
     /// * `root_ca_certificate_path` - The path to the root CA certificate, used to verify the authenticity of the server when using self-signed certificates
-    pub fn new(url: String, uid_field_name: String, spoof_check_secret: String, root_ca_certificate_path: String)-> HttpsClient {
+    pub fn new(url: String, uid_field_name: String, spoof_check_secret: String, root_ca_certificate_path: String)-> HttpClient {
         let buf= read(root_ca_certificate_path).expect("Error reading root CA certificate");
         let cert = reqwest::Certificate::from_pem(&buf).expect("Error parsing root CA certificate");
         let client_builder=reqwest::Client::builder()
             .connection_verbose(true); //print verbose connection info for debugging
         let client= client_builder.build().expect("Error building HTTPS client");
 
-        HttpsClient {
+        HttpClient {
             client: client,
             url: url,
             uid_field_name: uid_field_name,
@@ -28,10 +31,19 @@ impl HttpsClient {
         }
     }
 
-    /// Sends an authentication request to the server
+    /// Sends an authentication request to the server. Handles PEP's authentication flow.
     /// * `uid` - The user ID to send in the HTTP header
     /// * `spoof_check_secret` - The secret to use for the Shibboleth spoof check
     pub async fn send_auth_request(&self, uid: &str, spoof_check_secret: &str) -> Result<reqwest::Response, reqwest::Error> {
+        // Use the ChaCha20 cipher as a random number generator to generate a random string of 32 bytes
+        // This gives a security level of 128 bits against collisions, so it's in line with the rest of PEP
+        let mut code_verifier = [0u8; 32];
+
+
+        let mut rng = StdRng::from_entropy();
+        rng.fill(&mut code_verifier[..]);
+        let code_challenge= digest(&code_verifier);
+        let auth_endpoint_url=self.url.to_owned()+"/auth?&user="+uid+"&client_id=123&redirect_uri=\"http://127.0.0.1\",\"http://localhost:16515\"&response_type=code&code_challenge="+&code_challenge+"&code_challemge_method=S256";   //TODO: what's client_id again? Difference with user?
         let request = self.client
             .post(&self.url)
             .header("Shib-Spoof-Check", spoof_check_secret)

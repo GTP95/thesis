@@ -5,7 +5,7 @@ mod irma_session_handler;
 extern crate rocket;
 
 use crate::irma_session_handler::IrmaSessionHandler;
-use crate::http_client::HttpsClient;
+use crate::http_client::HttpClient;
 use rocket::http::Status;
 use rocket::response::stream::TextStream;
 use rocket::response::{content, status};
@@ -85,11 +85,11 @@ async fn get_status(session_id: String, irma_session_handler: &State<IrmaSession
 }
 
 #[get("/success/<session_id>")]
-async fn success(session_id: String, irma_session_handler: &State<IrmaSessionHandler>, template_engine: &State<TemplateEngine>, config: &State<Config>, https_client: &State<HttpsClient>) -> status::Custom<content::RawHtml<String>> {
+async fn success(session_id: String, irma_session_handler: &State<IrmaSessionHandler>, template_engine: &State<TemplateEngine>, config: &State<Config>, http_client: &State<HttpClient>) -> status::Custom<content::RawHtml<String>> {
     let session_token = SessionToken(session_id);
     let session_result = irma_session_handler.get_status(&session_token).await;
     let disclosed_attribute=session_result.unwrap().disclosed[0][0].clone().raw_value.unwrap(); //TODO: see if this expression can be simplified
-    let request=oauth_request(&config.server_address, &disclosed_attribute, &config.spoof_check_secret, &config.uid_field_name, &https_client);
+    let request=oauth_request(&config.server_address, &disclosed_attribute, &config.spoof_check_secret, &config.uid_field_name, &http_client);
     let mut context = tera::Context::new();
     context.insert("disclosed_attribute", &disclosed_attribute);
     let template = template_engine.tera.render("success.html", &context).unwrap();
@@ -150,7 +150,7 @@ fn rocket() -> _ {
     tera.autoescape_on(vec![]); //Turns escaping OFF, otherwise the SVG containing the QR code in the disclose page gets displayed as text (i.e, the text description of the SVG format, no image)
 
     let irma_session_handler = IrmaSessionHandler::new(irma_server_address);
-    let https_client = http_client::HttpsClient::new(auth_server_address.parse().unwrap(), uid_field_name.parse().unwrap(), spoof_check_secret.parse().unwrap(), path_to_root_ca_certificate.parse().unwrap());
+    let http_client = http_client::HttpClient::new(auth_server_address.parse().unwrap(), uid_field_name.parse().unwrap(), spoof_check_secret.parse().unwrap(), path_to_root_ca_certificate.parse().unwrap());
 
     simple_logger::SimpleLogger::new().env().init().unwrap();   //logging, see https://docs.rs/simple_logger/4.2.0/simple_logger/
 
@@ -165,11 +165,11 @@ fn rocket() -> _ {
         })
         .manage(TemplateEngine{tera})
         .manage(irma_session_handler)
-        .manage(https_client)
+        .manage(http_client)
 }
 
 ///Sends an HTTP request to PEP's auth server containing the headers with the disclosed attribute
-async fn oauth_request(server_address: &str, user_id: &str, spoof_check_secret: &str, uid_field_name: &str, client: &HttpsClient) {
+async fn oauth_request(server_address: &str, user_id: &str, spoof_check_secret: &str, uid_field_name: &str, client: &HttpClient) {
 
     let request_result = client
         .send_auth_request(&String::from(user_id), &spoof_check_secret)
