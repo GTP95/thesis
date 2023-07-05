@@ -44,7 +44,7 @@ impl HttpClient {
         rng.fill(&mut code_verifier[..]);
 
         let code_challenge= digest(&code_verifier);
-        let auth_endpoint_url_with_params=self.url.to_owned()+"/auth?&user="+uid+"&client_id=123&redirect_uri=\"http://127.0.0.1:16515\",\"http://localhost:16515\"&response_type=code&code_challenge="+&code_challenge+"&code_challenge_method=S256";   //TODO: what's client_id again? Difference with user?
+        let auth_endpoint_url_with_params=self.url.to_owned()+"/auth?&user="+uid+"&client_id=123&redirect_uri=http://127.0.0.1:16515/&response_type=code&code_challenge="+&code_challenge+"&code_challenge_method=S256";
         let host_with_port=self.url.to_owned().replace("https://", "").replace("http://", "");
         let request = self.client
             .get(auth_endpoint_url_with_params)
