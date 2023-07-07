@@ -172,7 +172,7 @@ fn rocket() -> _ {
 async fn oauth_request(server_address: &str, user_id: &str, spoof_check_secret: &str, uid_field_name: &str, client: &HttpClient) {
 
     let request_result = client
-        .send_auth_request(&String::from(user_id), &spoof_check_secret)
+        .send_auth_request(&String::from(user_id))
         .await;
     match request_result {
         Ok(response) => println!("Response: {:?}", response),
