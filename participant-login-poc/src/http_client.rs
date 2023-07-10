@@ -1,6 +1,7 @@
 use std::fs::read;
 use rand::{Rng, SeedableRng};
 use rand::rngs::StdRng;
+use reqwest::redirect;
 use sha256::digest;
 
 pub struct HttpClient {
@@ -21,6 +22,7 @@ impl HttpClient {
         reqwest::Certificate::from_pem(&buf).expect("Error parsing root CA certificate");
         let client_builder=reqwest::Client::builder()
             .connection_verbose(true) //print verbose connection info for debugging
+            .redirect(redirect::Policy::none())//Do not follow redirects, so that I can get the code without contacting localhost:16515/
             .http1_title_case_headers();    //case-sensitive headers. See https://github.com/seanmonstar/reqwest/discussions/1895#discussioncomment-6355126
         let client= client_builder.build().expect("Error building HTTPS client");
 

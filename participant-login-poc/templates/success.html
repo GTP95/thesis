@@ -6,5 +6,9 @@
 </head>
 <body>
 <p>You are being logged in with attribute {{disclosed_attribute}}</p>
+
+<!-- I'm passing here the code so the JS script can read it and perform the request -->
+<!-- TODO: remember to discuss the security of this choice. Some trust must be given to the webapp anyway -->
+<p hidden id="code_for_token">{{code_for_token}}</p>
 </body>
 </html>

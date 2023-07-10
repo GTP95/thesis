@@ -4,6 +4,7 @@ mod irma_session_handler;
 #[macro_use]
 extern crate rocket;
 
+use std::error::Error;
 use crate::irma_session_handler::IrmaSessionHandler;
 use crate::http_client::HttpClient;
 use rocket::http::Status;
@@ -89,12 +90,25 @@ async fn success(session_id: String, irma_session_handler: &State<IrmaSessionHan
     let session_token = SessionToken(session_id);
     let session_result = irma_session_handler.get_status(&session_token).await;
     let disclosed_attribute=session_result.unwrap().disclosed[0][0].clone().raw_value.unwrap(); //TODO: see if this expression can be simplified
-    let request=oauth_request(&config.server_address, &disclosed_attribute, &config.spoof_check_secret, &config.uid_field_name, &http_client);
+    let request= request_code_for_token(&config.server_address, &disclosed_attribute, &config.spoof_check_secret, &config.uid_field_name, &http_client);
     let mut context = tera::Context::new();
-    context.insert("disclosed_attribute", &disclosed_attribute);
-    let template = template_engine.tera.render("success.html", &context).unwrap();
-    request.await;
-    status::Custom(Status::Accepted, content::RawHtml(template))
+    let code_for_token=request.await;
+    match code_for_token {
+        Ok(code)=> {
+            context.insert("disclosed_attribute", &disclosed_attribute);
+            context.insert("code_for_token", &code);
+            let template = template_engine.tera.render("success.html", &context).unwrap();
+            status::Custom(Status::Accepted, content::RawHtml(template))
+        }
+        Err(error)=>{
+            context.insert("error_message", &error.to_string());
+            let template = template_engine.tera.render("error.html", &context).unwrap();
+            status::Custom(Status::InternalServerError, content::RawHtml(template))
+        }
+    }
+
+
+
 }
 
 #[catch(404)]
@@ -169,20 +183,14 @@ fn rocket() -> _ {
 }
 
 ///Sends an HTTP request to PEP's auth server containing the headers with the disclosed attribute
-async fn oauth_request(server_address: &str, user_id: &str, spoof_check_secret: &str, uid_field_name: &str, client: &HttpClient) {
+async fn request_code_for_token(server_address: &str, user_id: &str, spoof_check_secret: &str, uid_field_name: &str, client: &HttpClient) -> Result<String, Box<dyn Error>>{
 
-    let request_result = client
+    let response = client
         .send_auth_request(&String::from(user_id))
-        .await;
-    match request_result {
-        Ok(response) => println!("Response: {:?}", response),
-        Err(error) => {
-            println!("Error: {:?}", error);
-            println!("user_id: {:?}", user_id);
-            println!("uid_field_name: {:?}", uid_field_name);
-            println!("spoof_check_secret: {:?}", spoof_check_secret);
+        .await?;
+    let redirect_url=response.headers()["location"].to_str()?;
 
-        },
-    }
+    Ok(redirect_url.split('=').collect::<Vec<&str>>()[1].to_owned())
+
 }
 
