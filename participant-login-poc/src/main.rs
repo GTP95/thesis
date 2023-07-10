@@ -29,6 +29,11 @@ struct TemplateEngine{
     tera: Tera
 }
 
+struct Codes{
+    code: String,
+    code_verifier: [u8; 32]
+}
+
 
 #[get("/")]
 async fn index() -> status::Custom<content::RawHtml<String>> {
@@ -54,8 +59,8 @@ async fn irma_disclose_id(template_engine: &State<TemplateEngine>) -> content::R
     let mut context = tera::Context::new();
     context.insert("qr", &qr);
     context.insert("session_id", &request_result.session.token.0);
-    let template = template_engine.tera.render("disclose.html", &context).unwrap();
-    content::RawHtml(template)
+    let rendered_html = template_engine.tera.render("disclose.html", &context).unwrap();
+    content::RawHtml(rendered_html)
 }
 
 #[get("/status/<session_id>")]
@@ -94,16 +99,18 @@ async fn success(session_id: String, irma_session_handler: &State<IrmaSessionHan
     let mut context = tera::Context::new();
     let code_for_token=request.await;
     match code_for_token {
-        Ok(code)=> {
+        Ok(codes)=> {
             context.insert("disclosed_attribute", &disclosed_attribute);
-            context.insert("code_for_token", &code);
-            let template = template_engine.tera.render("success.html", &context).unwrap();
-            status::Custom(Status::Accepted, content::RawHtml(template))
+            context.insert("code_for_token", &codes.code);
+            context.insert("auth_server_base_url", &config.server_address);
+            context.insert("code_verifier", &codes.code_verifier);
+            let rendered_html = template_engine.tera.render("success.html", &context).unwrap();
+            status::Custom(Status::Accepted, content::RawHtml(rendered_html))
         }
         Err(error)=>{
             context.insert("error_message", &error.to_string());
-            let template = template_engine.tera.render("error.html", &context).unwrap();
-            status::Custom(Status::InternalServerError, content::RawHtml(template))
+            let rendered_html = template_engine.tera.render("error.html", &context).unwrap();
+            status::Custom(Status::InternalServerError, content::RawHtml(rendered_html))
         }
     }
 
@@ -183,14 +190,19 @@ fn rocket() -> _ {
 }
 
 ///Sends an HTTP request to PEP's auth server containing the headers with the disclosed attribute
-async fn request_code_for_token(server_address: &str, user_id: &str, spoof_check_secret: &str, uid_field_name: &str, client: &HttpClient) -> Result<String, Box<dyn Error>>{
+async fn request_code_for_token(server_address: &str, user_id: &str, spoof_check_secret: &str, uid_field_name: &str, client: &HttpClient) -> Result<Codes, Box<dyn Error>>{
 
-    let response = client
+    let auth_response = client
         .send_auth_request(&String::from(user_id))
         .await?;
-    let redirect_url=response.headers()["location"].to_str()?;
+    let redirect_url= auth_response.response.headers()["location"].to_str()?;
+    let code_verifier= auth_response.code_verifier;
+    let code=redirect_url.split('=').collect::<Vec<&str>>()[1].to_owned();
 
-    Ok(redirect_url.split('=').collect::<Vec<&str>>()[1].to_owned())
-
+    let result=Codes{
+        code,
+        code_verifier
+    };
+    Ok(result)
 }
 

@@ -10,5 +10,29 @@
 <!-- I'm passing here the code so the JS script can read it and perform the request -->
 <!-- TODO: remember to discuss the security of this choice. Some trust must be given to the webapp anyway -->
 <p hidden id="code_for_token">{{code_for_token}}</p>
+<p hidden id="auth_server_base_url">{{auth_server_base_url}}</p>
+<p hidden id="code_verifier">{{code_verifier}}</p>
+
+<!-- The following script gets the OAuth token from the authentication server using the code -->
+<script>
+    $(document).ready(function () {
+        const code_for_token = $("#code_for_token").text();
+        const auth_server_base_url = $("#auth_server_base_url").text();
+        $.ajax({
+            url: auth_server_base_url + "/token",
+            type: "POST",
+            data: {
+                client_id:123,
+                redirect_uri: "http://127.0.0.1:16515",
+                grant_type: "authorization_code",
+                code: code_for_token,
+                code_verifier
+            },
+            success: function (result) {
+                window.location.href = "/success/" + result;
+            }
+        });
+    });
+</script>
 </body>
 </html>

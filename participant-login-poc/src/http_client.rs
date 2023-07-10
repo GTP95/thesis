@@ -11,6 +11,11 @@ pub struct HttpClient {
     spoof_check_secret: String
 }
 
+pub struct AuthResponse {
+    pub code_verifier: [u8; 32],
+    pub response: reqwest::Response
+}
+
 impl HttpClient {
     /// Creates a new HTTPS client
     /// * `url` - The base URL to send the authentication request to. Must be PEP's authentication server's URL
@@ -36,9 +41,8 @@ impl HttpClient {
 
     /// Sends an authentication request to the server. Handles PEP's authentication flow.
     /// * `uid` - The user ID to send in the HTTP header
-    /// * `spoof_check_secret` - The secret to use for the Shibboleth spoof check
-    pub async fn send_auth_request(&self, uid: &str) -> Result<reqwest::Response, reqwest::Error> {
-        // Use the ChaCha20 or ChaCha12 cipher as a random number generator to generate a random string of 32 bytes
+    pub async fn send_auth_request(&self, uid: &str) -> Result<AuthResponse, reqwest::Error> {
+        // Use the ChaCha20 or ChaCha12 cipher as a pseudorandom number generator to generate a random string of 32 bytes
         // This gives a security level of 128 bits against collisions, so it's in line with the rest of PEP
         // It is subject to change, see https://docs.rs/rand/0.7.0/rand/rngs/struct.StdRng.html#impl-Rng
         let mut code_verifier = [0u8; 32];
@@ -47,15 +51,18 @@ impl HttpClient {
 
         let code_challenge= digest(&code_verifier);
         let auth_endpoint_url_with_params=self.url.to_owned()+"/auth?&user="+uid+"&client_id=123&redirect_uri=http://127.0.0.1:16515/&response_type=code&code_challenge="+&code_challenge+"&code_challenge_method=S256";
-        let request = self.client
+        let response = self.client
             .get(auth_endpoint_url_with_params)
-           // .header("Host", host_with_port)   //let's be compliant to the HTTP specs
             .header("Shib-Spoof-Check", &self.spoof_check_secret)
             .header(self.uid_field_name.clone(), uid)
             .body("")
             .send()
             .await?;
-        Ok(request)
+        let result=AuthResponse {
+            code_verifier,
+            response
+        };
+        Ok(result)
     }
 
 }
