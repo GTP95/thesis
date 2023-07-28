@@ -66,7 +66,8 @@ authentication is successful sends to the auth server those HTTP headers. See `O
 3. Write a Rust middleware that implements SAML2.0 to communicate directly with Shibbolet.
 
 ### Possibilities evaluation
-The first option let's keep a consistent picture: no special way to authenticate for participants. The drawback is that I don't know PHP, but since I was crazy
+ include_directories(/home/osboxes/build/protobuf-wasm/build/protobuf/src)
+` to CMAThe first option let's keep a consistent picture: no special way to authenticate for participants. The drawback is that I don't know PHP, but since I was crazy
 enough to use Rust just for this thesis it is an annoyance but not a real roadblock  
 
 The second option has the advantage of letting me reuse the (little) Rust code I've already written. But then there would be two different ways to login depending on the user's role. In addition to this, it could be that the potential impact of a bug in my code would be more severe than in the case of a SimpleSAMLphp plugin  
@@ -79,3 +80,1498 @@ Writing a SimpleSAMLphp plugin would require mixing PHP and JS code, due to the 
 Actually I don't even need irma-requestor, it was just a waste of time: it is actually easy to write code to directly query irmago's endpoints.
 Since writing a SimpleSAMLphp plugin is taking way too long, I'm considering also `gluu` and solution #2.
 Following Gluu's instruction to deploy their Docker containers fails. Asking for support and then learning how to extend it could take more time than option #2, o I'm now going to try it.
+
+
+
+## The middleware way
+This works, but I need a slight modification to PEP's code to handle the redirection during authentication. I need to allow redirection to a different URI.
+Here's the original code:
+```C++
+std::unordered_set<std::string> OAuthProvider::getRegisteredRedirectURIs(const std::string& clientId) {
+  //We currently only support one client_id. There are no plans to change this, so no need to make this more complicated for now.
+  if(clientId == "123") {
+    return { "http://127.0.0.1:16515/", "http://localhost:16515/" };
+  }
+  return {};
+}
+```
+
+Well, actually I just decided to not follow the redirection and just grab the code form the redirection request, so no modification needed. Problem solving is over 9000!
+
+Now this part works
+
+### Converting pcpli to WASM
+A new adventure begins! It uses `protobuf`, which means that i have to compile this library first. Let's see if I can avoid that by using https://github.com/dsyer/protobuf-wasm
+```
+Make Error at /usr/share/cmake-3.22/Modules/FindPackageHandleStandardArgs.cmake:230 (message):
+  Could NOT find Protobuf (missing: Protobuf_LIBRARIES Protobuf_INCLUDE_DIR)
+Call Stack (most recent call first):
+  /usr/share/cmake-3.22/Modules/FindPackageHandleStandardArgs.cmake:594 (_FPHSA_FAILURE_MESSAGE)
+  /usr/share/cmake-3.22/Modules/FindProtobuf.cmake:650 (FIND_PACKAGE_HANDLE_STANDARD_ARGS)
+  cpp/ext/protobuf/CMakeLists.txt:70 (find_package)
+  ```
+
+  https://stackoverflow.com/questions/28597351/how-do-i-add-a-library-path-in-cmake
+
+  This doesn't seem to work, let's see if maybe it's enough to provide a local repository for protobuf and hopefully CMake does the reeeest.
+Building Boost 32_64 binaries, since building PEP requires the 32 bits version somehow. This should ensure more compatibility.
+Unfortunately doesn't work, building 32 bit binaries ):
+Building was with some issues and required multiple tries, then I had to slowly update CMake's config to find the new library and all its components, but it's working now.
+Onto OpenSSL, trying to get it from a sort of pre-built version from this repo: https://github.com/jedisct1/openssl-wasm. Stil requires building, doing it. Building didn't work, but I was able to point to the prebuilt binaries. And also OpenSSL is done!
+
+Now SQLite3. No need to provide SQLite3 after deleting directories pertaining to other project components. protobuf required to manually set some varaibles, as the WASM version I found isn't a CMake package. Unfortunately, after all this work compilation still fails with error
+```
+/home/osboxes/core-master/wasm/cpp/pep/proto/Messages.pb.h:10:10: fatal error: 'google/protobuf/port_def.inc' file not found
+```
+The file indeed doesn't exist in that repo. Giving up on having a web application. See also `https://github.com/protocolbuffers/protobuf/issues/5868`, althoug I don't have a version mismatch between the protoc executable in my VM and the WASM version of protobuf.
+One more try: since the output of find is
+```BASH
+$ find / -name "port_def.inc" 2>/dev/null
+/home/osboxes/build/protobuf/src/google/protobuf/port_def.inc
+/home/osboxes/build/protobuf-wasm/build/protobuf/src/google/protobuf/port_def.inc
+/usr/include/google/protobuf/port_def.inc
+```
+I should probably add one of those as include directory for protobuf in CMake's config.
+ Adding `include_directories(/home/osboxes/build/protobuf-wasm/build/protobuf/src)` to CMake's config in the section about protobuf didn't solve the issue. Changing protobuf's include_dir variable to `/home/osboxes/build/protobuf-wasm/build/protobuf/src` did solve the issue, but opened the door to new ones:
+ ```BASH
+$ emmake ninja pepcli
+make: ninja pepcli
+[3/160] Performing download step (download, verify and extract) for 'prometheuscpp_builder'
+-- Downloading...
+   dst='/home/osboxes/core-master/wasm/cpp/cache/prometheus-cpp.v1.0.1.tar.gz'
+   timeout='none'
+   inactivity timeout='none'
+-- Using src='https://github.com/jupp0r/prometheus-cpp/archive/refs/tags/v1.0.1.tar.gz'
+-- verifying file...
+       file='/home/osboxes/core-master/wasm/cpp/cache/prometheus-cpp.v1.0.1.tar.gz'
+-- Downloading... done
+-- extracting...
+     src='/home/osboxes/core-master/wasm/cpp/cache/prometheus-cpp.v1.0.1.tar.gz'
+     dst='/home/osboxes/core-master/wasm/cpp/ext/prometheus-cpp/src/prometheuscpp_builder'
+-- extracting... [tar xfz]
+-- extracting... [analysis]
+-- extracting... [rename]
+-- extracting... [clean up]
+-- extracting... done
+[6/160] Performing download step (download, verify and extract) for 'mbed_builder'
+-- Downloading...
+   dst='/home/osboxes/core-master/wasm/cpp/cache/v2.28.1.tar.gz'
+   timeout='none'
+   inactivity timeout='none'
+-- Using src='https://github.com/Mbed-TLS/mbedtls/archive/refs/tags/v2.28.1.tar.gz'
+-- verifying file...
+       file='/home/osboxes/core-master/wasm/cpp/cache/v2.28.1.tar.gz'
+-- Downloading... done
+-- extracting...
+     src='/home/osboxes/core-master/wasm/cpp/cache/v2.28.1.tar.gz'
+     dst='/home/osboxes/core-master/wasm/cpp/ext/mbed/src/mbed_builder'
+-- extracting... [tar xfz]
+-- extracting... [analysis]
+-- extracting... [rename]
+-- extracting... [clean up]
+-- extracting... done
+[9/160] Performing configure step for 'mbed_builder'
+-- The C compiler identification is Clang 17.0.0
+-- Detecting C compiler ABI info
+-- Detecting C compiler ABI info - done
+-- Check for working C compiler: /home/osboxes/emsdk/upstream/emscripten/emcc - skipped
+-- Detecting C compile features
+-- Detecting C compile features - done
+-- Found Python3: /usr/bin/python3.10 (found version "3.10.6") found components: Interpreter 
+-- Configuring done
+-- Generating done
+-- Build files have been written to: /home/osboxes/core-master/wasm/cpp/ext/mbed/src/mbed_builder-build
+[10/160] Performing configure step for 'prometheuscpp_builder'
+-- The C compiler identification is Clang 17.0.0
+-- The CXX compiler identification is Clang 17.0.0
+-- Detecting C compiler ABI info
+-- Detecting C compiler ABI info - done
+-- Check for working C compiler: /home/osboxes/emsdk/upstream/emscripten/emcc - skipped
+-- Detecting C compile features
+-- Detecting C compile features - done
+-- Detecting CXX compiler ABI info
+-- Detecting CXX compiler ABI info - done
+-- Check for working CXX compiler: /home/osboxes/emsdk/upstream/emscripten/em++ - skipped
+-- Detecting CXX compile features
+-- Detecting CXX compile features - done
+-- Looking for pthread.h
+-- Looking for pthread.h - found
+-- Performing Test CMAKE_HAVE_LIBC_PTHREAD
+-- Performing Test CMAKE_HAVE_LIBC_PTHREAD - Success
+-- Found Threads: TRUE  
+-- Performing Test HAVE_CXX_ATOMICS_WITHOUT_LIB
+-- Performing Test HAVE_CXX_ATOMICS_WITHOUT_LIB - Success
+-- Performing Test COMPILER_HAS_HIDDEN_VISIBILITY
+-- Performing Test COMPILER_HAS_HIDDEN_VISIBILITY - Success
+-- Performing Test COMPILER_HAS_HIDDEN_INLINE_VISIBILITY
+-- Performing Test COMPILER_HAS_HIDDEN_INLINE_VISIBILITY - Success
+-- Performing Test COMPILER_HAS_DEPRECATED_ATTR
+-- Performing Test COMPILER_HAS_DEPRECATED_ATTR - Success
+-- The following features have been enabled:
+
+ * pkg-config, generate pkg-config files
+
+-- The following OPTIONAL packages have been found:
+
+ * Threads
+
+-- The following features have been disabled:
+
+ * Pull, support for pulling metrics
+ * Push, support for pushing metrics to a push-gateway
+ * Compression, support for zlib compression of metrics
+ * IYWU, include-what-you-use
+
+-- Configuring done
+-- Generating done
+-- Build files have been written to: /home/osboxes/core-master/wasm/cpp/ext/prometheus-cpp/src/prometheuscpp
+[11/160] Generating PEPAccessManager.chain, PEPAccessManager.key...ientCA.key, rootCA.cert, s3certs/private.key, s3certs/public.crt
+Certificate request self-signature ok
+subject=C = NL, ST = Gelderland, L = Nijmegen, O = Radboud Universiteit, OU = PEP Root CA, CN = PEP Root CA
+Certificate request self-signature ok
+subject=C = NL, ST = Gelderland, L = Nijmegen, O = Radboud Universiteit, OU = PEP Intermediate TLS CA, CN = PEP Intermediate TLS CA
+Certificate request self-signature ok
+subject=C = NL, ST = Gelderland, L = Nijmegen, O = Radboud Universiteit, OU = PEP Intermediate PEP Server CA, CN = PEP Intermediate PEP Server CA
+Certificate request self-signature ok
+subject=C = NL, ST = Gelderland, L = Nijmegen, O = Radboud Universiteit, OU = PEP Intermediate PEP Client CA, CN = PEP Intermediate PEP Client CA
+Certificate request self-signature ok
+subject=C = NL, ST = Gelderland, L = Nijmegen, O = Radboud Universiteit, OU = KeyServer, CN = KeyServer
+Certificate request self-signature ok
+subject=C = NL, ST = Gelderland, L = Nijmegen, O = Radboud Universiteit, OU = S3, CN = S3
+Certificate request self-signature ok
+subject=C = NL, ST = Gelderland, L = Nijmegen, O = Radboud Universiteit, OU = AccessManager, CN = AccessManager
+Certificate request self-signature ok
+subject=C = NL, ST = Gelderland, L = Nijmegen, O = Radboud Universiteit, OU = AccessManager, CN = AccessManager
+Certificate request self-signature ok
+subject=C = NL, ST = Gelderland, L = Nijmegen, O = Radboud Universiteit, OU = Transcryptor, CN = Transcryptor
+Certificate request self-signature ok
+subject=C = NL, ST = Gelderland, L = Nijmegen, O = Radboud Universiteit, OU = Transcryptor, CN = Transcryptor
+Certificate request self-signature ok
+subject=C = NL, ST = Gelderland, L = Nijmegen, O = Radboud Universiteit, OU = StorageFacility, CN = StorageFacility
+Certificate request self-signature ok
+subject=C = NL, ST = Gelderland, L = Nijmegen, O = Radboud Universiteit, OU = StorageFacility, CN = StorageFacility
+Certificate request self-signature ok
+subject=C = NL, ST = Gelderland, L = Nijmegen, O = Radboud Universiteit, OU = RegistrationServer, CN = RegistrationServer
+Certificate request self-signature ok
+subject=C = NL, ST = Gelderland, L = Nijmegen, O = Radboud Universiteit, OU = RegistrationServer, CN = RegistrationServer
+Certificate request self-signature ok
+subject=C = NL, ST = Gelderland, L = Nijmegen, O = Radboud Universiteit, OU = Authserver, CN = Authserver
+Certificate request self-signature ok
+subject=C = NL, ST = Gelderland, L = Nijmegen, O = Radboud Universiteit, OU = Authserver, CN = Authserver
+
+Leaving password file 'rootCA.password'. Please secure it.
+Leaving password file 'tlsCA.password'. Please secure it.
+Leaving password file 'pepServerCA.password'. Please secure it.
+[15/160] Performing download step (download, verify and extract) for 'xxhash'
+-- Downloading...
+   dst='/home/osboxes/core-master/wasm/cpp/ext/xxhash/src/v0.6.5.zip'
+   timeout='none'
+   inactivity timeout='none'
+-- Using src='https://github.com/Cyan4973/xxHash/archive/v0.6.5.zip'
+-- verifying file...
+       file='/home/osboxes/core-master/wasm/cpp/ext/xxhash/src/v0.6.5.zip'
+-- Downloading... done
+-- extracting...
+     src='/home/osboxes/core-master/wasm/cpp/ext/xxhash/src/v0.6.5.zip'
+     dst='/home/osboxes/core-master/wasm/cpp/ext/xxhash/src/xxhash'
+-- extracting... [tar xfz]
+-- extracting... [analysis]
+-- extracting... [rename]
+-- extracting... [clean up]
+-- extracting... done
+[18/160] Performing build step for 'mbed_builder'
+[1/99] Building C object library/CMakeFiles/mbedcrypto.dir/arc4.c.o
+[2/99] Building C object library/CMakeFiles/mbedcrypto.dir/aesni.c.o
+[3/99] Building C object library/CMakeFiles/mbedcrypto.dir/aes.c.o
+[4/99] Building C object library/CMakeFiles/mbedcrypto.dir/aria.c.o
+[5/99] Building C object library/CMakeFiles/mbedcrypto.dir/asn1parse.c.o
+[6/99] Building C object library/CMakeFiles/mbedcrypto.dir/asn1write.c.o
+[7/99] Building C object library/CMakeFiles/mbedcrypto.dir/base64.c.o
+[8/99] Building C object library/CMakeFiles/mbedcrypto.dir/blowfish.c.o
+[9/99] Building C object library/CMakeFiles/mbedcrypto.dir/camellia.c.o
+[10/99] Building C object library/CMakeFiles/mbedcrypto.dir/bignum.c.o
+[11/99] Building C object library/CMakeFiles/mbedcrypto.dir/ccm.c.o
+[12/99] Building C object library/CMakeFiles/mbedcrypto.dir/chacha20.c.o
+[13/99] Building C object library/CMakeFiles/mbedcrypto.dir/chachapoly.c.o
+[14/99] Building C object library/CMakeFiles/mbedcrypto.dir/cipher_wrap.c.o
+[15/99] Building C object library/CMakeFiles/mbedcrypto.dir/cipher.c.o
+[16/99] Building C object library/CMakeFiles/mbedcrypto.dir/constant_time.c.o
+[17/99] Building C object library/CMakeFiles/mbedcrypto.dir/cmac.c.o
+[18/99] Building C object library/CMakeFiles/mbedcrypto.dir/ctr_drbg.c.o
+[19/99] Building C object library/CMakeFiles/mbedcrypto.dir/des.c.o
+[20/99] Building C object library/CMakeFiles/mbedcrypto.dir/dhm.c.o
+[21/99] Building C object library/CMakeFiles/mbedcrypto.dir/ecdh.c.o
+[22/99] Building C object library/CMakeFiles/mbedcrypto.dir/ecdsa.c.o
+[23/99] Building C object library/CMakeFiles/mbedcrypto.dir/ecjpake.c.o
+[24/99] Building C object library/CMakeFiles/mbedcrypto.dir/ecp.c.o
+[25/99] Building C object library/CMakeFiles/mbedcrypto.dir/entropy.c.o
+[26/99] Building C object library/CMakeFiles/mbedcrypto.dir/ecp_curves.c.o
+[27/99] Building C object library/CMakeFiles/mbedcrypto.dir/entropy_poll.c.o
+[28/99] Building C object library/CMakeFiles/mbedcrypto.dir/error.c.o
+[29/99] Building C object library/CMakeFiles/mbedcrypto.dir/gcm.c.o
+[30/99] Building C object library/CMakeFiles/mbedcrypto.dir/havege.c.o
+[31/99] Building C object library/CMakeFiles/mbedcrypto.dir/hkdf.c.o
+[32/99] Building C object library/CMakeFiles/mbedcrypto.dir/hmac_drbg.c.o
+[33/99] Building C object library/CMakeFiles/mbedcrypto.dir/md.c.o
+[34/99] Building C object library/CMakeFiles/mbedcrypto.dir/md2.c.o
+[35/99] Building C object library/CMakeFiles/mbedcrypto.dir/md4.c.o
+[36/99] Building C object library/CMakeFiles/mbedcrypto.dir/md5.c.o
+[37/99] Building C object library/CMakeFiles/mbedcrypto.dir/memory_buffer_alloc.c.o
+[38/99] Building C object library/CMakeFiles/mbedcrypto.dir/mps_reader.c.o
+[39/99] Building C object library/CMakeFiles/mbedcrypto.dir/mps_trace.c.o
+[40/99] Building C object library/CMakeFiles/mbedcrypto.dir/nist_kw.c.o
+[41/99] Building C object library/CMakeFiles/mbedcrypto.dir/oid.c.o
+[42/99] Building C object library/CMakeFiles/mbedcrypto.dir/padlock.c.o
+[43/99] Building C object library/CMakeFiles/mbedcrypto.dir/pem.c.o
+[44/99] Building C object library/CMakeFiles/mbedcrypto.dir/pk.c.o
+[45/99] Building C object library/CMakeFiles/mbedcrypto.dir/pk_wrap.c.o
+[46/99] Building C object library/CMakeFiles/mbedcrypto.dir/pkcs12.c.o
+[47/99] Building C object library/CMakeFiles/mbedcrypto.dir/pkcs5.c.o
+[48/99] Building C object library/CMakeFiles/mbedcrypto.dir/pkparse.c.o
+[49/99] Building C object library/CMakeFiles/mbedcrypto.dir/pkwrite.c.o
+[50/99] Building C object library/CMakeFiles/mbedcrypto.dir/platform.c.o
+[51/99] Building C object library/CMakeFiles/mbedcrypto.dir/platform_util.c.o
+[52/99] Building C object library/CMakeFiles/mbedcrypto.dir/poly1305.c.o
+[53/99] Building C object library/CMakeFiles/mbedcrypto.dir/psa_crypto_aead.c.o
+[54/99] Building C object library/CMakeFiles/mbedcrypto.dir/psa_crypto_cipher.c.o
+[55/99] Building C object library/CMakeFiles/mbedcrypto.dir/psa_crypto.c.o
+[56/99] Building C object library/CMakeFiles/mbedcrypto.dir/psa_crypto_client.c.o
+[57/99] Building C object library/CMakeFiles/mbedcrypto.dir/psa_crypto_driver_wrappers.c.o
+[58/99] Building C object library/CMakeFiles/mbedcrypto.dir/psa_crypto_ecp.c.o
+[59/99] Building C object library/CMakeFiles/mbedcrypto.dir/psa_crypto_hash.c.o
+[60/99] Building C object library/CMakeFiles/mbedcrypto.dir/psa_crypto_mac.c.o
+[61/99] Building C object library/CMakeFiles/mbedcrypto.dir/psa_crypto_rsa.c.o
+[62/99] Building C object library/CMakeFiles/mbedcrypto.dir/psa_crypto_se.c.o
+[63/99] Building C object library/CMakeFiles/mbedcrypto.dir/psa_crypto_slot_management.c.o
+[64/99] Building C object library/CMakeFiles/mbedcrypto.dir/psa_crypto_storage.c.o
+[65/99] Building C object library/CMakeFiles/mbedcrypto.dir/psa_its_file.c.o
+[66/99] Building C object library/CMakeFiles/mbedcrypto.dir/ripemd160.c.o
+[67/99] Building C object library/CMakeFiles/mbedcrypto.dir/rsa_internal.c.o
+[68/99] Building C object library/CMakeFiles/mbedcrypto.dir/rsa.c.o
+[69/99] Building C object library/CMakeFiles/mbedcrypto.dir/sha1.c.o
+[70/99] Building C object library/CMakeFiles/mbedcrypto.dir/sha256.c.o
+[71/99] Building C object library/CMakeFiles/mbedcrypto.dir/sha512.c.o
+[72/99] Building C object library/CMakeFiles/mbedcrypto.dir/threading.c.o
+[73/99] Building C object library/CMakeFiles/mbedcrypto.dir/timing.c.o
+[74/99] Building C object library/CMakeFiles/mbedcrypto.dir/version.c.o
+[75/99] Building C object library/CMakeFiles/mbedcrypto.dir/version_features.c.o
+[76/99] Building C object library/CMakeFiles/mbedcrypto.dir/xtea.c.o
+[77/99] Building C object library/CMakeFiles/mbedtls.dir/debug.c.o
+[78/99] Building C object library/CMakeFiles/mbedx509.dir/certs.c.o
+[79/99] Linking C static library library/libmbedcrypto.a
+[80/99] Building C object library/CMakeFiles/mbedx509.dir/pkcs11.c.o
+[81/99] Building C object library/CMakeFiles/mbedx509.dir/x509_create.c.o
+[82/99] Building C object library/CMakeFiles/mbedx509.dir/x509.c.o
+[83/99] Building C object library/CMakeFiles/mbedx509.dir/x509_crl.c.o
+[84/99] Building C object library/CMakeFiles/mbedx509.dir/x509_csr.c.o
+[85/99] Building C object library/CMakeFiles/mbedx509.dir/x509write_crt.c.o
+[86/99] Building C object library/CMakeFiles/mbedx509.dir/x509_crt.c.o
+[87/99] Building C object library/CMakeFiles/mbedx509.dir/x509write_csr.c.o
+[88/99] Linking C static library library/libmbedx509.a
+[89/99] Building C object library/CMakeFiles/mbedtls.dir/ssl_cache.c.o
+[90/99] Building C object library/CMakeFiles/mbedtls.dir/net_sockets.c.o
+[91/99] Building C object library/CMakeFiles/mbedtls.dir/ssl_ciphersuites.c.o
+[92/99] Building C object library/CMakeFiles/mbedtls.dir/ssl_cookie.c.o
+[93/99] Building C object library/CMakeFiles/mbedtls.dir/ssl_cli.c.o
+[94/99] Building C object library/CMakeFiles/mbedtls.dir/ssl_msg.c.o
+[95/99] Building C object library/CMakeFiles/mbedtls.dir/ssl_srv.c.o
+[96/99] Building C object library/CMakeFiles/mbedtls.dir/ssl_ticket.c.o
+[97/99] Building C object library/CMakeFiles/mbedtls.dir/ssl_tls13_keys.c.o
+[98/99] Building C object library/CMakeFiles/mbedtls.dir/ssl_tls.c.o
+[99/99] Linking C static library library/libmbedtls.a
+[21/160] Performing configure step for 'xxhash'
+-- The C compiler identification is Clang 17.0.0
+-- The CXX compiler identification is Clang 17.0.0
+-- Detecting C compiler ABI info
+-- Detecting C compiler ABI info - done
+-- Check for working C compiler: /home/osboxes/emsdk/upstream/emscripten/emcc - skipped
+-- Detecting C compile features
+-- Detecting C compile features - done
+-- Detecting CXX compiler ABI info
+-- Detecting CXX compiler ABI info - done
+-- Check for working CXX compiler: /home/osboxes/emsdk/upstream/emscripten/em++ - skipped
+-- Detecting CXX compile features
+-- Detecting CXX compile features - done
+-- Configuring done
+-- Generating done
+-- Build files have been written to: /home/osboxes/core-master/wasm/cpp/ext/xxhash/src/xxhash
+[23/160] Performing build step for 'prometheuscpp_builder'
+[1/14] Building CXX object core/CMakeFiles/core.dir/src/check_names.cc.o
+[2/14] Building CXX object core/CMakeFiles/core.dir/src/counter.cc.o
+[3/14] Building CXX object core/CMakeFiles/core.dir/src/detail/builder.cc.o
+[4/14] Building CXX object core/CMakeFiles/core.dir/src/detail/ckms_quantiles.cc.o
+[5/14] Building CXX object core/CMakeFiles/core.dir/src/detail/time_window_quantiles.cc.o
+[6/14] Building CXX object core/CMakeFiles/core.dir/src/detail/utils.cc.o
+[7/14] Building CXX object core/CMakeFiles/core.dir/src/gauge.cc.o
+[8/14] Building CXX object core/CMakeFiles/core.dir/src/histogram.cc.o
+[9/14] Building CXX object core/CMakeFiles/core.dir/src/family.cc.o
+[10/14] Building CXX object core/CMakeFiles/core.dir/src/serializer.cc.o
+[11/14] Building CXX object core/CMakeFiles/core.dir/src/registry.cc.o
+[12/14] Building CXX object core/CMakeFiles/core.dir/src/summary.cc.o
+[13/14] Building CXX object core/CMakeFiles/core.dir/src/text_serializer.cc.o
+[14/14] Linking CXX static library lib/libprometheus-cpp-core.a
+[24/160] Performing install step for 'prometheuscpp_builder'
+[0/1] Install the project...
+-- Install configuration: "Debug"
+-- Installing: /home/osboxes/core-master/wasm/cpp/ext/prometheus-cpp/install/lib/libprometheus-cpp-core.a
+-- Installing: /home/osboxes/core-master/wasm/cpp/ext/prometheus-cpp/install/include
+-- Installing: /home/osboxes/core-master/wasm/cpp/ext/prometheus-cpp/install/include/prometheus
+-- Installing: /home/osboxes/core-master/wasm/cpp/ext/prometheus-cpp/install/include/prometheus/metric_type.h
+-- Installing: /home/osboxes/core-master/wasm/cpp/ext/prometheus-cpp/install/include/prometheus/client_metric.h
+-- Installing: /home/osboxes/core-master/wasm/cpp/ext/prometheus-cpp/install/include/prometheus/detail
+-- Installing: /home/osboxes/core-master/wasm/cpp/ext/prometheus-cpp/install/include/prometheus/detail/ckms_quantiles.h
+-- Installing: /home/osboxes/core-master/wasm/cpp/ext/prometheus-cpp/install/include/prometheus/detail/utils.h
+-- Installing: /home/osboxes/core-master/wasm/cpp/ext/prometheus-cpp/install/include/prometheus/detail/time_window_quantiles.h
+-- Installing: /home/osboxes/core-master/wasm/cpp/ext/prometheus-cpp/install/include/prometheus/detail/future_std.h
+-- Installing: /home/osboxes/core-master/wasm/cpp/ext/prometheus-cpp/install/include/prometheus/detail/builder.h
+-- Installing: /home/osboxes/core-master/wasm/cpp/ext/prometheus-cpp/install/include/prometheus/serializer.h
+-- Installing: /home/osboxes/core-master/wasm/cpp/ext/prometheus-cpp/install/include/prometheus/text_serializer.h
+-- Installing: /home/osboxes/core-master/wasm/cpp/ext/prometheus-cpp/install/include/prometheus/histogram.h
+-- Installing: /home/osboxes/core-master/wasm/cpp/ext/prometheus-cpp/install/include/prometheus/metric_family.h
+-- Installing: /home/osboxes/core-master/wasm/cpp/ext/prometheus-cpp/install/include/prometheus/registry.h
+-- Installing: /home/osboxes/core-master/wasm/cpp/ext/prometheus-cpp/install/include/prometheus/check_names.h
+-- Installing: /home/osboxes/core-master/wasm/cpp/ext/prometheus-cpp/install/include/prometheus/gauge.h
+-- Installing: /home/osboxes/core-master/wasm/cpp/ext/prometheus-cpp/install/include/prometheus/family.h
+-- Installing: /home/osboxes/core-master/wasm/cpp/ext/prometheus-cpp/install/include/prometheus/counter.h
+-- Installing: /home/osboxes/core-master/wasm/cpp/ext/prometheus-cpp/install/include/prometheus/collectable.h
+-- Installing: /home/osboxes/core-master/wasm/cpp/ext/prometheus-cpp/install/include/prometheus/labels.h
+-- Installing: /home/osboxes/core-master/wasm/cpp/ext/prometheus-cpp/install/include/prometheus/summary.h
+-- Up-to-date: /home/osboxes/core-master/wasm/cpp/ext/prometheus-cpp/install/include
+-- Up-to-date: /home/osboxes/core-master/wasm/cpp/ext/prometheus-cpp/install/include/prometheus
+-- Up-to-date: /home/osboxes/core-master/wasm/cpp/ext/prometheus-cpp/install/include/prometheus/detail
+-- Installing: /home/osboxes/core-master/wasm/cpp/ext/prometheus-cpp/install/include/prometheus/detail/core_export.h
+-- Installing: /home/osboxes/core-master/wasm/cpp/ext/prometheus-cpp/install/lib/pkgconfig/prometheus-cpp-core.pc
+-- Installing: /home/osboxes/core-master/wasm/cpp/ext/prometheus-cpp/install/lib/cmake/prometheus-cpp/prometheus-cpp-targets.cmake
+-- Installing: /home/osboxes/core-master/wasm/cpp/ext/prometheus-cpp/install/lib/cmake/prometheus-cpp/prometheus-cpp-targets-debug.cmake
+-- Installing: /home/osboxes/core-master/wasm/cpp/ext/prometheus-cpp/install/lib/cmake/prometheus-cpp/prometheus-cpp-config.cmake
+[27/160] Performing build step for 'xxhash'
+[1/2] Building C object CMakeFiles/xxhash.dir/xxhash.c.o
+[2/2] Linking C static library libxxhash.a
+[31/160] Performing download step (download, verify and extract) for 'rxcpp'
+-- Downloading...
+   dst='/home/osboxes/core-master/wasm/cpp/cache/v4.1.0.tar.gz'
+   timeout='none'
+   inactivity timeout='none'
+-- Using src='https://github.com/ReactiveX/RxCpp/archive/v4.1.0.tar.gz'
+-- verifying file...
+       file='/home/osboxes/core-master/wasm/cpp/cache/v4.1.0.tar.gz'
+-- Downloading... done
+-- extracting...
+     src='/home/osboxes/core-master/wasm/cpp/cache/v4.1.0.tar.gz'
+     dst='/home/osboxes/core-master/wasm/cpp/ext/rxcpp/src/rxcpp'
+-- extracting... [tar xfz]
+-- extracting... [analysis]
+-- extracting... [rename]
+-- extracting... [clean up]
+-- extracting... done
+[34/160] Performing download step (download, verify and extract) for 'tzdata'
+-- Downloading...
+   dst='/home/osboxes/core-master/wasm/cpp/ext/tz/tzdata-prefix/src/tzdata-latest.tar.gz'
+   timeout='none'
+   inactivity timeout='none'
+-- Using src='https://www.iana.org/time-zones/repository/tzdata-latest.tar.gz'
+-- [download 0% complete]
+-- [download 4% complete]
+-- [download 7% complete]
+-- [download 11% complete]
+-- [download 15% complete]
+-- [download 18% complete]
+-- [download 22% complete]
+-- [download 26% complete]
+-- [download 30% complete]
+-- [download 33% complete]
+-- [download 37% complete]
+-- [download 41% complete]
+-- [download 44% complete]
+-- [download 48% complete]
+-- [download 52% complete]
+-- [download 55% complete]
+-- [download 59% complete]
+-- [download 63% complete]
+-- [download 66% complete]
+-- [download 70% complete]
+-- [download 74% complete]
+-- [download 78% complete]
+-- [download 81% complete]
+-- [download 85% complete]
+-- [download 89% complete]
+-- [download 92% complete]
+-- [download 96% complete]
+-- [download 100% complete]
+-- Downloading... done
+-- extracting...
+     src='/home/osboxes/core-master/wasm/cpp/ext/tz/tzdata-prefix/src/tzdata-latest.tar.gz'
+     dst='/home/osboxes/core-master/wasm/cpp/ext/tz/tzdata'
+-- extracting... [tar xfz]
+-- extracting... [analysis]
+-- extracting... [rename]
+-- extracting... [clean up]
+-- extracting... done
+[41/160] Performing download step (git clone) for 'libarchive'
+Cloning into 'libarchive'...
+HEAD is now at 227a4b97 Release 3.5.1
+[44/160] Performing configure step for 'rxcpp'
+Not searching for unused variables given on the command line.
+-- The C compiler identification is Clang 17.0.0
+-- The CXX compiler identification is Clang 17.0.0
+-- Detecting C compiler ABI info
+-- Detecting C compiler ABI info - done
+-- Check for working C compiler: /home/osboxes/emsdk/upstream/emscripten/emcc - skipped
+-- Detecting C compile features
+-- Detecting C compile features - done
+-- Detecting CXX compiler ABI info
+-- Detecting CXX compiler ABI info - done
+-- Check for working CXX compiler: /home/osboxes/emsdk/upstream/emscripten/em++ - skipped
+-- Detecting CXX compile features
+-- Detecting CXX compile features - done
+-- RXCPP_DIR: /home/osboxes/core-master/wasm/cpp/ext/rxcpp/src/rxcpp
+-- RXCPP_DIR: /home/osboxes/core-master/wasm/cpp/ext/rxcpp/src/rxcpp
+-- Looking for pthread.h
+-- Looking for pthread.h - found
+-- Performing Test CMAKE_HAVE_LIBC_PTHREAD
+-- Performing Test CMAKE_HAVE_LIBC_PTHREAD - Success
+-- Found Threads: TRUE  
+-- CMAKE_CXX_COMPILER_ID: Clang
+-- clang compiler version: 17.0.0
+-- using clang settings
+-- RXCPP_DIR: /home/osboxes/core-master/wasm/cpp/ext/rxcpp/src/rxcpp
+-- Could NOT find Doxygen (missing: DOXYGEN_EXECUTABLE) 
+-- RXCPP_DIR: /home/osboxes/core-master/wasm/cpp/ext/rxcpp/src/rxcpp
+-- CMAKE_CXX_COMPILER_ID: Clang
+-- clang compiler version: 17.0.0
+-- using clang settings
+-- RXCPP_DIR: /home/osboxes/core-master/wasm/cpp/ext/rxcpp/src/rxcpp
+-- CMAKE_CXX_COMPILER_ID: Clang
+-- clang compiler version: 17.0.0
+-- using clang settings
+-- RXCPP_DIR: /home/osboxes/core-master/wasm/cpp/ext/rxcpp/src/rxcpp
+-- CMAKE_CXX_COMPILER_ID: Clang
+-- clang compiler version: 17.0.0
+-- using clang settings
+-- RXCPP_DIR: /home/osboxes/core-master/wasm/cpp/ext/rxcpp/src/rxcpp
+-- CMAKE_CXX_COMPILER_ID: Clang
+-- clang compiler version: 17.0.0
+-- using clang settings
+-- RXCPP_DIR: /home/osboxes/core-master/wasm/cpp/ext/rxcpp/src/rxcpp
+-- CMAKE_CXX_COMPILER_ID: Clang
+-- clang compiler version: 17.0.0
+-- using clang settings
+-- RXCPP_DIR: /home/osboxes/core-master/wasm/cpp/ext/rxcpp/src/rxcpp
+-- CMAKE_CXX_COMPILER_ID: Clang
+-- clang compiler version: 17.0.0
+-- using clang settings
+-- Configuring done
+-- Generating done
+-- Build files have been written to: /home/osboxes/core-master/wasm/cpp/ext/rxcpp/src/rxcpp-build
+[55/160] Performing configure step for 'libarchive'
+-- The C compiler identification is Clang 17.0.0
+-- Detecting C compiler ABI info
+-- Detecting C compiler ABI info - done
+-- Check for working C compiler: /home/osboxes/emsdk/upstream/emscripten/emcc - skipped
+-- Detecting C compile features
+-- Detecting C compile features - done
+-- Performing Test HAVE_DIRENT_H
+-- Performing Test HAVE_DIRENT_H - Success
+-- Looking for include file sys/types.h
+-- Looking for include file sys/types.h - found
+-- Looking for include files sys/types.h, acl/libacl.h
+-- Looking for include files sys/types.h, acl/libacl.h - not found
+-- Looking for include files sys/types.h, attr/xattr.h
+-- Looking for include files sys/types.h, attr/xattr.h - not found
+-- Looking for include files sys/types.h, ctype.h
+-- Looking for include files sys/types.h, ctype.h - found
+-- Looking for 3 include files sys/types.h, ..., copyfile.h
+-- Looking for 3 include files sys/types.h, ..., copyfile.h - not found
+-- Looking for 3 include files sys/types.h, ..., direct.h
+-- Looking for 3 include files sys/types.h, ..., direct.h - not found
+-- Looking for 3 include files sys/types.h, ..., dlfcn.h
+-- Looking for 3 include files sys/types.h, ..., dlfcn.h - found
+-- Looking for 4 include files sys/types.h, ..., errno.h
+-- Looking for 4 include files sys/types.h, ..., errno.h - found
+-- Looking for 5 include files sys/types.h, ..., ext2fs/ext2_fs.h
+-- Looking for 5 include files sys/types.h, ..., ext2fs/ext2_fs.h - not found
+-- Performing Test HAVE_WORKING_EXT2_IOC_GETFLAGS
+-- Performing Test HAVE_WORKING_EXT2_IOC_GETFLAGS - Failed
+-- Looking for 5 include files sys/types.h, ..., fcntl.h
+-- Looking for 5 include files sys/types.h, ..., fcntl.h - found
+-- Looking for 6 include files sys/types.h, ..., grp.h
+-- Looking for 6 include files sys/types.h, ..., grp.h - found
+-- Looking for 7 include files sys/types.h, ..., inttypes.h
+-- Looking for 7 include files sys/types.h, ..., inttypes.h - found
+-- Looking for 8 include files sys/types.h, ..., io.h
+-- Looking for 8 include files sys/types.h, ..., io.h - not found
+-- Looking for 8 include files sys/types.h, ..., langinfo.h
+-- Looking for 8 include files sys/types.h, ..., langinfo.h - found
+-- Looking for 9 include files sys/types.h, ..., limits.h
+-- Looking for 9 include files sys/types.h, ..., limits.h - found
+-- Looking for 10 include files sys/types.h, ..., linux/types.h
+-- Looking for 10 include files sys/types.h, ..., linux/types.h - not found
+-- Looking for 10 include files sys/types.h, ..., linux/fiemap.h
+-- Looking for 10 include files sys/types.h, ..., linux/fiemap.h - not found
+-- Looking for 10 include files sys/types.h, ..., linux/fs.h
+-- Looking for 10 include files sys/types.h, ..., linux/fs.h - not found
+-- Performing Test HAVE_WORKING_FS_IOC_GETFLAGS
+-- Performing Test HAVE_WORKING_FS_IOC_GETFLAGS - Failed
+-- Looking for 10 include files sys/types.h, ..., linux/magic.h
+-- Looking for 10 include files sys/types.h, ..., linux/magic.h - not found
+-- Looking for 10 include files sys/types.h, ..., locale.h
+-- Looking for 10 include files sys/types.h, ..., locale.h - found
+-- Looking for 11 include files sys/types.h, ..., membership.h
+-- Looking for 11 include files sys/types.h, ..., membership.h - not found
+-- Looking for 11 include files sys/types.h, ..., memory.h
+-- Looking for 11 include files sys/types.h, ..., memory.h - found
+-- Looking for 12 include files sys/types.h, ..., paths.h
+-- Looking for 12 include files sys/types.h, ..., paths.h - found
+-- Looking for 13 include files sys/types.h, ..., poll.h
+-- Looking for 13 include files sys/types.h, ..., poll.h - found
+-- Looking for 14 include files sys/types.h, ..., process.h
+-- Looking for 14 include files sys/types.h, ..., process.h - not found
+-- Looking for 14 include files sys/types.h, ..., pthread.h
+-- Looking for 14 include files sys/types.h, ..., pthread.h - found
+-- Looking for 15 include files sys/types.h, ..., pwd.h
+-- Looking for 15 include files sys/types.h, ..., pwd.h - found
+-- Looking for 16 include files sys/types.h, ..., readpassphrase.h
+-- Looking for 16 include files sys/types.h, ..., readpassphrase.h - not found
+-- Looking for 16 include files sys/types.h, ..., regex.h
+-- Looking for 16 include files sys/types.h, ..., regex.h - found
+-- Looking for 17 include files sys/types.h, ..., signal.h
+-- Looking for 17 include files sys/types.h, ..., signal.h - found
+-- Looking for 18 include files sys/types.h, ..., spawn.h
+-- Looking for 18 include files sys/types.h, ..., spawn.h - found
+-- Looking for 19 include files sys/types.h, ..., stdarg.h
+-- Looking for 19 include files sys/types.h, ..., stdarg.h - found
+-- Looking for 20 include files sys/types.h, ..., stdint.h
+-- Looking for 20 include files sys/types.h, ..., stdint.h - found
+-- Looking for 21 include files sys/types.h, ..., stdlib.h
+-- Looking for 21 include files sys/types.h, ..., stdlib.h - found
+-- Looking for 22 include files sys/types.h, ..., string.h
+-- Looking for 22 include files sys/types.h, ..., string.h - found
+-- Looking for 23 include files sys/types.h, ..., strings.h
+-- Looking for 23 include files sys/types.h, ..., strings.h - found
+-- Looking for 24 include files sys/types.h, ..., sys/acl.h
+-- Looking for 24 include files sys/types.h, ..., sys/acl.h - not found
+-- Looking for 24 include files sys/types.h, ..., sys/cdefs.h
+-- Looking for 24 include files sys/types.h, ..., sys/cdefs.h - not found
+-- Looking for 24 include files sys/types.h, ..., sys/extattr.h
+-- Looking for 24 include files sys/types.h, ..., sys/extattr.h - not found
+-- Looking for 24 include files sys/types.h, ..., sys/ioctl.h
+-- Looking for 24 include files sys/types.h, ..., sys/ioctl.h - found
+-- Looking for 25 include files sys/types.h, ..., sys/mkdev.h
+-- Looking for 25 include files sys/types.h, ..., sys/mkdev.h - not found
+-- Looking for 25 include files sys/types.h, ..., sys/mount.h
+-- Looking for 25 include files sys/types.h, ..., sys/mount.h - found
+-- Looking for 26 include files sys/types.h, ..., sys/param.h
+-- Looking for 26 include files sys/types.h, ..., sys/param.h - found
+-- Looking for 27 include files sys/types.h, ..., sys/poll.h
+-- Looking for 27 include files sys/types.h, ..., sys/poll.h - found
+-- Looking for 28 include files sys/types.h, ..., sys/richacl.h
+-- Looking for 28 include files sys/types.h, ..., sys/richacl.h - not found
+-- Looking for 28 include files sys/types.h, ..., sys/select.h
+-- Looking for 28 include files sys/types.h, ..., sys/select.h - found
+-- Looking for 29 include files sys/types.h, ..., sys/stat.h
+-- Looking for 29 include files sys/types.h, ..., sys/stat.h - found
+-- Looking for 30 include files sys/types.h, ..., sys/statfs.h
+-- Looking for 30 include files sys/types.h, ..., sys/statfs.h - found
+-- Looking for 31 include files sys/types.h, ..., sys/statvfs.h
+-- Looking for 31 include files sys/types.h, ..., sys/statvfs.h - found
+-- Looking for 32 include files sys/types.h, ..., sys/sysmacros.h
+-- Looking for 32 include files sys/types.h, ..., sys/sysmacros.h - found
+-- Looking for 33 include files sys/types.h, ..., sys/time.h
+-- Looking for 33 include files sys/types.h, ..., sys/time.h - found
+-- Looking for 34 include files sys/types.h, ..., sys/utime.h
+-- Looking for 34 include files sys/types.h, ..., sys/utime.h - not found
+-- Looking for 34 include files sys/types.h, ..., sys/utsname.h
+-- Looking for 34 include files sys/types.h, ..., sys/utsname.h - found
+-- Looking for 35 include files sys/types.h, ..., sys/vfs.h
+-- Looking for 35 include files sys/types.h, ..., sys/vfs.h - found
+-- Looking for 36 include files sys/types.h, ..., sys/wait.h
+-- Looking for 36 include files sys/types.h, ..., sys/wait.h - found
+-- Looking for 37 include files sys/types.h, ..., sys/xattr.h
+-- Looking for 37 include files sys/types.h, ..., sys/xattr.h - found
+-- Looking for 38 include files sys/types.h, ..., time.h
+-- Looking for 38 include files sys/types.h, ..., time.h - found
+-- Looking for 39 include files sys/types.h, ..., unistd.h
+-- Looking for 39 include files sys/types.h, ..., unistd.h - found
+-- Looking for 40 include files sys/types.h, ..., utime.h
+-- Looking for 40 include files sys/types.h, ..., utime.h - found
+-- Looking for 41 include files sys/types.h, ..., wchar.h
+-- Looking for 41 include files sys/types.h, ..., wchar.h - found
+-- Looking for 42 include files sys/types.h, ..., wctype.h
+-- Looking for 42 include files sys/types.h, ..., wctype.h - found
+-- Looking for 43 include files sys/types.h, ..., windows.h
+-- Looking for 43 include files sys/types.h, ..., windows.h - not found
+-- Looking for 43 include files sys/types.h, ..., wincrypt.h
+-- Looking for 43 include files sys/types.h, ..., wincrypt.h - not found
+-- Looking for 43 include files sys/types.h, ..., winioctl.h
+-- Looking for 43 include files sys/types.h, ..., winioctl.h - not found
+-- Performing Test SAFE_TO_DEFINE_EXTENSIONS
+-- Performing Test SAFE_TO_DEFINE_EXTENSIONS - Success
+-- Looking for MD5Init in md
+-- Looking for MD5Init in md - not found
+-- Looking for regcomp
+-- Looking for regcomp - found
+-- Looking for _CrtSetReportMode
+-- Looking for _CrtSetReportMode - not found
+-- Looking for arc4random_buf
+-- Looking for arc4random_buf - not found
+-- Looking for chflags
+-- Looking for chflags - not found
+-- Looking for chown
+-- Looking for chown - found
+-- Looking for chroot
+-- Looking for chroot - found
+-- Looking for ctime_r
+-- Looking for ctime_r - found
+-- Looking for fchdir
+-- Looking for fchdir - found
+-- Looking for fchflags
+-- Looking for fchflags - not found
+-- Looking for fchmod
+-- Looking for fchmod - found
+-- Looking for fchown
+-- Looking for fchown - found
+-- Looking for fcntl
+-- Looking for fcntl - found
+-- Looking for fdopendir
+-- Looking for fdopendir - found
+-- Looking for fork
+-- Looking for fork - found
+-- Looking for fstat
+-- Looking for fstat - found
+-- Looking for fstatat
+-- Looking for fstatat - found
+-- Looking for fstatfs
+-- Looking for fstatfs - found
+-- Looking for fstatvfs
+-- Looking for fstatvfs - found
+-- Looking for ftruncate
+-- Looking for ftruncate - found
+-- Looking for futimens
+-- Looking for futimens - found
+-- Looking for futimes
+-- Looking for futimes - not found
+-- Looking for futimesat
+-- Looking for futimesat - found
+-- Looking for geteuid
+-- Looking for geteuid - found
+-- Looking for getgrgid_r
+-- Looking for getgrgid_r - found
+-- Looking for getgrnam_r
+-- Looking for getgrnam_r - found
+-- Looking for getpwnam_r
+-- Looking for getpwnam_r - found
+-- Looking for getpwuid_r
+-- Looking for getpwuid_r - found
+-- Looking for getpid
+-- Looking for getpid - found
+-- Looking for getvfsbyname
+-- Looking for getvfsbyname - not found
+-- Looking for gmtime_r
+-- Looking for gmtime_r - found
+-- Looking for lchflags
+-- Looking for lchflags - not found
+-- Looking for lchmod
+-- Looking for lchmod - found
+-- Looking for lchown
+-- Looking for lchown - found
+-- Looking for link
+-- Looking for link - found
+-- Looking for localtime_r
+-- Looking for localtime_r - found
+-- Looking for lstat
+-- Looking for lstat - found
+-- Looking for lutimes
+-- Looking for lutimes - not found
+-- Looking for mbrtowc
+-- Looking for mbrtowc - found
+-- Looking for memmove
+-- Looking for memmove - found
+-- Looking for mkdir
+-- Looking for mkdir - found
+-- Looking for mkfifo
+-- Looking for mkfifo - found
+-- Looking for mknod
+-- Looking for mknod - found
+-- Looking for mkstemp
+-- Looking for mkstemp - found
+-- Looking for nl_langinfo
+-- Looking for nl_langinfo - found
+-- Looking for openat
+-- Looking for openat - found
+-- Looking for pipe
+-- Looking for pipe - found
+-- Looking for poll
+-- Looking for poll - found
+-- Looking for posix_spawnp
+-- Looking for posix_spawnp - not found
+-- Looking for readlink
+-- Looking for readlink - found
+-- Looking for readpassphrase
+-- Looking for readpassphrase - not found
+-- Looking for select
+-- Looking for select - found
+-- Looking for setenv
+-- Looking for setenv - found
+-- Looking for setlocale
+-- Looking for setlocale - found
+-- Looking for sigaction
+-- Looking for sigaction - found
+-- Looking for statfs
+-- Looking for statfs - found
+-- Looking for statvfs
+-- Looking for statvfs - found
+-- Looking for strchr
+-- Looking for strchr - found
+-- Looking for strdup
+-- Looking for strdup - found
+-- Looking for strerror
+-- Looking for strerror - found
+-- Looking for strncpy_s
+-- Looking for strncpy_s - not found
+-- Looking for strnlen
+-- Looking for strnlen - found
+-- Looking for strrchr
+-- Looking for strrchr - found
+-- Looking for symlink
+-- Looking for symlink - found
+-- Looking for timegm
+-- Looking for timegm - found
+-- Looking for tzset
+-- Looking for tzset - found
+-- Looking for unlinkat
+-- Looking for unlinkat - found
+-- Looking for unsetenv
+-- Looking for unsetenv - found
+-- Looking for utime
+-- Looking for utime - found
+-- Looking for utimes
+-- Looking for utimes - found
+-- Looking for utimensat
+-- Looking for utimensat - found
+-- Looking for vfork
+-- Looking for vfork - found
+-- Looking for wcrtomb
+-- Looking for wcrtomb - found
+-- Looking for wcscmp
+-- Looking for wcscmp - found
+-- Looking for wcscpy
+-- Looking for wcscpy - found
+-- Looking for wcslen
+-- Looking for wcslen - found
+-- Looking for wctomb
+-- Looking for wctomb - found
+-- Looking for _ctime64_s
+-- Looking for _ctime64_s - not found
+-- Looking for _fseeki64
+-- Looking for _fseeki64 - not found
+-- Looking for _get_timezone
+-- Looking for _get_timezone - not found
+-- Looking for _gmtime64_s
+-- Looking for _gmtime64_s - not found
+-- Looking for _localtime64_s
+-- Looking for _localtime64_s - not found
+-- Looking for _mkgmtime64
+-- Looking for _mkgmtime64 - not found
+-- Looking for cygwin_conv_path
+-- Looking for cygwin_conv_path - not found
+-- Looking for fseeko
+-- Looking for fseeko - found
+-- Looking for strerror_r
+-- Looking for strerror_r - found
+-- Looking for strftime
+-- Looking for strftime - found
+-- Looking for vprintf
+-- Looking for vprintf - found
+-- Looking for wmemcmp
+-- Looking for wmemcmp - found
+-- Looking for wmemcpy
+-- Looking for wmemcpy - found
+-- Looking for wmemmove
+-- Looking for wmemmove - found
+-- Performing Test HAVE_STRUCT_VFSCONF
+-- Performing Test HAVE_STRUCT_VFSCONF - Failed
+-- Performing Test HAVE_STRUCT_XVFSCONF
+-- Performing Test HAVE_STRUCT_XVFSCONF - Failed
+-- Performing Test HAVE_READDIR_R
+-- Performing Test HAVE_READDIR_R - Success
+-- Performing Test HAVE_DIRFD
+-- Performing Test HAVE_DIRFD - Success
+-- Performing Test HAVE_READLINKAT
+-- Performing Test HAVE_READLINKAT - Success
+-- Performing Test MAJOR_IN_MKDEV
+-- Performing Test MAJOR_IN_MKDEV - Failed
+-- Performing Test MAJOR_IN_SYSMACROS
+-- Performing Test MAJOR_IN_SYSMACROS - Success
+-- Looking for EFTYPE
+-- Looking for EFTYPE - not found
+-- Looking for EILSEQ
+-- Looking for EILSEQ - found
+-- Looking for D_MD_ORDER
+-- Looking for D_MD_ORDER - not found
+-- Looking for INT32_MAX
+-- Looking for INT32_MAX - found
+-- Looking for INT32_MIN
+-- Looking for INT32_MIN - found
+-- Looking for INT64_MAX
+-- Looking for INT64_MAX - found
+-- Looking for INT64_MIN
+-- Looking for INT64_MIN - found
+-- Looking for INTMAX_MAX
+-- Looking for INTMAX_MAX - found
+-- Looking for INTMAX_MIN
+-- Looking for INTMAX_MIN - found
+-- Looking for UINT32_MAX
+-- Looking for UINT32_MAX - found
+-- Looking for UINT64_MAX
+-- Looking for UINT64_MAX - found
+-- Looking for UINTMAX_MAX
+-- Looking for UINTMAX_MAX - found
+-- Looking for SIZE_MAX
+-- Looking for SIZE_MAX - found
+-- Looking for SSIZE_MAX
+-- Looking for SSIZE_MAX - found
+-- Performing Test HAVE_STRUCT_TM_TM_GMTOFF
+-- Performing Test HAVE_STRUCT_TM_TM_GMTOFF - Success
+-- Performing Test HAVE_STRUCT_TM___TM_GMTOFF
+-- Performing Test HAVE_STRUCT_TM___TM_GMTOFF - Success
+-- Performing Test HAVE_STRUCT_STATFS_F_NAMEMAX
+-- Performing Test HAVE_STRUCT_STATFS_F_NAMEMAX - Failed
+-- Performing Test HAVE_STRUCT_STAT_ST_BIRTHTIME
+-- Performing Test HAVE_STRUCT_STAT_ST_BIRTHTIME - Failed
+-- Performing Test HAVE_STRUCT_STAT_ST_BIRTHTIMESPEC_TV_NSEC
+-- Performing Test HAVE_STRUCT_STAT_ST_BIRTHTIMESPEC_TV_NSEC - Failed
+-- Performing Test HAVE_STRUCT_STAT_ST_MTIMESPEC_TV_NSEC
+-- Performing Test HAVE_STRUCT_STAT_ST_MTIMESPEC_TV_NSEC - Failed
+-- Performing Test HAVE_STRUCT_STAT_ST_MTIM_TV_NSEC
+-- Performing Test HAVE_STRUCT_STAT_ST_MTIM_TV_NSEC - Success
+-- Performing Test HAVE_STRUCT_STAT_ST_MTIME_N
+-- Performing Test HAVE_STRUCT_STAT_ST_MTIME_N - Failed
+-- Performing Test HAVE_STRUCT_STAT_ST_UMTIME
+-- Performing Test HAVE_STRUCT_STAT_ST_UMTIME - Failed
+-- Performing Test HAVE_STRUCT_STAT_ST_MTIME_USEC
+-- Performing Test HAVE_STRUCT_STAT_ST_MTIME_USEC - Failed
+-- Performing Test HAVE_STRUCT_STAT_ST_BLKSIZE
+-- Performing Test HAVE_STRUCT_STAT_ST_BLKSIZE - Success
+-- Performing Test HAVE_STRUCT_STAT_ST_FLAGS
+-- Performing Test HAVE_STRUCT_STAT_ST_FLAGS - Failed
+-- Performing Test HAVE_STRUCT_STATVFS_F_IOSIZE
+-- Performing Test HAVE_STRUCT_STATVFS_F_IOSIZE - Failed
+-- Performing Test TIME_WITH_SYS_TIME
+-- Performing Test TIME_WITH_SYS_TIME - Success
+-- Looking for stddef.h
+-- Looking for stddef.h - found
+-- Check size of short
+-- Check size of short - done
+-- Check size of int
+-- Check size of int - done
+-- Check size of long
+-- Check size of long - done
+-- Check size of long long
+-- Check size of long long - done
+-- Check size of unsigned short
+-- Check size of unsigned short - done
+-- Check size of unsigned
+-- Check size of unsigned - done
+-- Check size of unsigned long
+-- Check size of unsigned long - done
+-- Check size of unsigned long long
+-- Check size of unsigned long long - done
+-- Check size of __int64
+-- Check size of __int64 - failed
+-- Check size of unsigned __int64
+-- Check size of unsigned __int64 - failed
+-- Check size of int16_t
+-- Check size of int16_t - done
+-- Check size of int32_t
+-- Check size of int32_t - done
+-- Check size of int64_t
+-- Check size of int64_t - done
+-- Check size of intmax_t
+-- Check size of intmax_t - done
+-- Check size of uint8_t
+-- Check size of uint8_t - done
+-- Check size of uint16_t
+-- Check size of uint16_t - done
+-- Check size of uint32_t
+-- Check size of uint32_t - done
+-- Check size of uint64_t
+-- Check size of uint64_t - done
+-- Check size of uintmax_t
+-- Check size of uintmax_t - done
+-- Check size of dev_t
+-- Check size of dev_t - done
+-- Check size of gid_t
+-- Check size of gid_t - done
+-- Check size of id_t
+-- Check size of id_t - done
+-- Check size of mode_t
+-- Check size of mode_t - done
+-- Check size of off_t
+-- Check size of off_t - done
+-- Check size of size_t
+-- Check size of size_t - done
+-- Check size of ssize_t
+-- Check size of ssize_t - done
+-- Check size of uid_t
+-- Check size of uid_t - done
+-- Check size of pid_t
+-- Check size of pid_t - done
+-- Check size of intptr_t
+-- Check size of intptr_t - done
+-- Check size of uintptr_t
+-- Check size of uintptr_t - done
+-- Check size of wchar_t
+-- Check size of wchar_t - done
+-- Checking _FILE_OFFSET_BITS for large files
+-- Checking _FILE_OFFSET_BITS for large files - not needed
+-- Checking support for ARCHIVE_CRYPTO_MD5_LIBC
+-- Checking support for ARCHIVE_CRYPTO_MD5_LIBC -- not found
+-- Checking support for ARCHIVE_CRYPTO_RMD160_LIBC
+-- Checking support for ARCHIVE_CRYPTO_RMD160_LIBC -- not found
+-- Checking support for ARCHIVE_CRYPTO_SHA1_LIBC
+-- Checking support for ARCHIVE_CRYPTO_SHA1_LIBC -- not found
+-- Checking support for ARCHIVE_CRYPTO_SHA256_LIBC
+-- Checking support for ARCHIVE_CRYPTO_SHA256_LIBC -- not found
+-- Checking support for ARCHIVE_CRYPTO_SHA384_LIBC
+-- Checking support for ARCHIVE_CRYPTO_SHA384_LIBC -- not found
+-- Checking support for ARCHIVE_CRYPTO_SHA512_LIBC
+-- Checking support for ARCHIVE_CRYPTO_SHA512_LIBC -- not found
+-- Checking support for ARCHIVE_CRYPTO_SHA256_LIBC2
+-- Checking support for ARCHIVE_CRYPTO_SHA256_LIBC2 -- not found
+-- Checking support for ARCHIVE_CRYPTO_SHA384_LIBC2
+-- Checking support for ARCHIVE_CRYPTO_SHA384_LIBC2 -- not found
+-- Checking support for ARCHIVE_CRYPTO_SHA512_LIBC2
+-- Checking support for ARCHIVE_CRYPTO_SHA512_LIBC2 -- not found
+-- Checking support for ARCHIVE_CRYPTO_SHA256_LIBC3
+-- Checking support for ARCHIVE_CRYPTO_SHA256_LIBC3 -- not found
+-- Checking support for ARCHIVE_CRYPTO_SHA384_LIBC3
+-- Checking support for ARCHIVE_CRYPTO_SHA384_LIBC3 -- not found
+-- Checking support for ARCHIVE_CRYPTO_SHA512_LIBC3
+-- Checking support for ARCHIVE_CRYPTO_SHA512_LIBC3 -- not found
+-- Checking support for ARCHIVE_CRYPTO_MD5_LIBSYSTEM
+-- Checking support for ARCHIVE_CRYPTO_MD5_LIBSYSTEM -- not found
+-- Checking support for ARCHIVE_CRYPTO_SHA1_LIBSYSTEM
+-- Checking support for ARCHIVE_CRYPTO_SHA1_LIBSYSTEM -- not found
+-- Checking support for ARCHIVE_CRYPTO_SHA256_LIBSYSTEM
+-- Checking support for ARCHIVE_CRYPTO_SHA256_LIBSYSTEM -- not found
+-- Checking support for ARCHIVE_CRYPTO_SHA384_LIBSYSTEM
+-- Checking support for ARCHIVE_CRYPTO_SHA384_LIBSYSTEM -- not found
+-- Checking support for ARCHIVE_CRYPTO_SHA512_LIBSYSTEM
+-- Checking support for ARCHIVE_CRYPTO_SHA512_LIBSYSTEM -- not found
+-- Checking support for ARCHIVE_CRYPTO_MD5_LIBMD
+-- Checking support for ARCHIVE_CRYPTO_MD5_LIBMD -- not found
+-- Checking support for ARCHIVE_CRYPTO_RMD160_LIBMD
+-- Checking support for ARCHIVE_CRYPTO_RMD160_LIBMD -- not found
+-- Checking support for ARCHIVE_CRYPTO_SHA1_LIBMD
+-- Checking support for ARCHIVE_CRYPTO_SHA1_LIBMD -- not found
+-- Checking support for ARCHIVE_CRYPTO_SHA256_LIBMD
+-- Checking support for ARCHIVE_CRYPTO_SHA256_LIBMD -- not found
+-- Checking support for ARCHIVE_CRYPTO_SHA512_LIBMD
+-- Checking support for ARCHIVE_CRYPTO_SHA512_LIBMD -- not found
+-- Configuring done
+-- Generating done
+-- Build files have been written to: /home/osboxes/core-master/wasm/cpp/ext/libarchive/src/libarchive
+[56/160] Performing build step for 'libarchive'
+[1/120] Building C object libarchive/CMakeFiles/archive_static.dir/archive_cmdline.c.o
+[2/120] Building C object libarchive/CMakeFiles/archive_static.dir/archive_check_magic.c.o
+[3/120] Building C object libarchive/CMakeFiles/archive_static.dir/archive_acl.c.o
+[4/120] Building C object libarchive/CMakeFiles/archive_static.dir/archive_digest.c.o
+[5/120] Building C object libarchive/CMakeFiles/archive_static.dir/archive_cryptor.c.o
+[6/120] Building C object libarchive/CMakeFiles/archive_static.dir/archive_entry_copy_stat.c.o
+[7/120] Building C object libarchive/CMakeFiles/archive_static.dir/archive_entry.c.o
+[8/120] Building C object libarchive/CMakeFiles/archive_static.dir/archive_entry_link_resolver.c.o
+[9/120] Building C object libarchive/CMakeFiles/archive_static.dir/archive_entry_sparse.c.o
+[10/120] Building C object libarchive/CMakeFiles/archive_static.dir/archive_entry_stat.c.o
+[11/120] Building C object libarchive/CMakeFiles/archive_static.dir/archive_entry_strmode.c.o
+[12/120] Building C object libarchive/CMakeFiles/archive_static.dir/archive_hmac.c.o
+[13/120] Building C object libarchive/CMakeFiles/archive_static.dir/archive_entry_xattr.c.o
+[14/120] Building C object libarchive/CMakeFiles/archive_static.dir/archive_getdate.c.o
+[15/120] Building C object libarchive/CMakeFiles/archive_static.dir/archive_pack_dev.c.o
+[16/120] Building C object libarchive/CMakeFiles/archive_static.dir/archive_options.c.o
+[17/120] Building C object libarchive/CMakeFiles/archive_static.dir/archive_match.c.o
+[18/120] Building C object libarchive/CMakeFiles/archive_static.dir/archive_pathmatch.c.o
+[19/120] Building C object libarchive/CMakeFiles/archive_static.dir/archive_ppmd8.c.o
+[20/120] Building C object libarchive/CMakeFiles/archive_static.dir/archive_ppmd7.c.o
+[21/120] Building C object libarchive/CMakeFiles/archive_static.dir/archive_random.c.o
+[22/120] Building C object libarchive/CMakeFiles/archive_static.dir/archive_rb.c.o
+[23/120] Building C object libarchive/CMakeFiles/archive_static.dir/archive_read.c.o
+[24/120] Building C object libarchive/CMakeFiles/archive_static.dir/archive_read_add_passphrase.c.o
+[25/120] Building C object libarchive/CMakeFiles/archive_static.dir/archive_read_append_filter.c.o
+[26/120] Building C object libarchive/CMakeFiles/archive_static.dir/archive_read_data_into_fd.c.o
+[27/120] Building C object libarchive/CMakeFiles/archive_static.dir/archive_read_disk_entry_from_file.c.o
+[28/120] Building C object libarchive/CMakeFiles/archive_static.dir/archive_read_disk_posix.c.o
+[29/120] Building C object libarchive/CMakeFiles/archive_static.dir/archive_read_disk_set_standard_lookup.c.o
+[30/120] Building C object libarchive/CMakeFiles/archive_static.dir/archive_read_extract.c.o
+[31/120] Building C object libarchive/CMakeFiles/archive_static.dir/archive_read_extract2.c.o
+[32/120] Building C object libarchive/CMakeFiles/archive_static.dir/archive_read_open_fd.c.o
+[33/120] Building C object libarchive/CMakeFiles/archive_static.dir/archive_read_open_file.c.o
+[34/120] Building C object libarchive/CMakeFiles/archive_static.dir/archive_read_open_memory.c.o
+[35/120] Building C object libarchive/CMakeFiles/archive_static.dir/archive_read_open_filename.c.o
+[36/120] Building C object libarchive/CMakeFiles/archive_static.dir/archive_read_set_format.c.o
+[37/120] Building C object libarchive/CMakeFiles/archive_static.dir/archive_read_support_filter_all.c.o
+[38/120] Building C object libarchive/CMakeFiles/archive_static.dir/archive_read_support_filter_bzip2.c.o
+[39/120] Building C object libarchive/CMakeFiles/archive_static.dir/archive_read_set_options.c.o
+[40/120] Building C object libarchive/CMakeFiles/archive_static.dir/archive_read_support_filter_compress.c.o
+[41/120] Building C object libarchive/CMakeFiles/archive_static.dir/archive_read_support_filter_gzip.c.o
+[42/120] Building C object libarchive/CMakeFiles/archive_static.dir/archive_read_support_filter_grzip.c.o
+[43/120] Building C object libarchive/CMakeFiles/archive_static.dir/archive_read_support_filter_lrzip.c.o
+[44/120] Building C object libarchive/CMakeFiles/archive_static.dir/archive_read_support_filter_lz4.c.o
+[45/120] Building C object libarchive/CMakeFiles/archive_static.dir/archive_read_support_filter_lzop.c.o
+[46/120] Building C object libarchive/CMakeFiles/archive_static.dir/archive_read_support_filter_none.c.o
+[47/120] Building C object libarchive/CMakeFiles/archive_static.dir/archive_read_support_filter_program.c.o
+[48/120] Building C object libarchive/CMakeFiles/archive_static.dir/archive_read_support_filter_rpm.c.o
+[49/120] Building C object libarchive/CMakeFiles/archive_static.dir/archive_read_support_filter_uu.c.o
+[50/120] Building C object libarchive/CMakeFiles/archive_static.dir/archive_read_support_filter_xz.c.o
+[51/120] Building C object libarchive/CMakeFiles/archive_static.dir/archive_read_support_filter_zstd.c.o
+[52/120] Building C object libarchive/CMakeFiles/archive_static.dir/archive_read_support_format_all.c.o
+[53/120] Building C object libarchive/CMakeFiles/archive_static.dir/archive_read_support_format_7zip.c.o
+[54/120] Building C object libarchive/CMakeFiles/archive_static.dir/archive_read_support_format_ar.c.o
+[55/120] Building C object libarchive/CMakeFiles/archive_static.dir/archive_read_support_format_by_code.c.o
+[56/120] Building C object libarchive/CMakeFiles/archive_static.dir/archive_read_support_format_cpio.c.o
+[57/120] Building C object libarchive/CMakeFiles/archive_static.dir/archive_read_support_format_cab.c.o
+[58/120] Building C object libarchive/CMakeFiles/archive_static.dir/archive_read_support_format_empty.c.o
+[59/120] Building C object libarchive/CMakeFiles/archive_static.dir/archive_read_support_format_lha.c.o
+[60/120] Building C object libarchive/CMakeFiles/archive_static.dir/archive_read_support_format_iso9660.c.o
+[61/120] Building C object libarchive/CMakeFiles/archive_static.dir/archive_read_support_format_mtree.c.o
+[62/120] Building C object libarchive/CMakeFiles/archive_static.dir/archive_read_support_format_raw.c.o
+[63/120] Building C object libarchive/CMakeFiles/archive_static.dir/archive_read_support_format_rar.c.o
+[64/120] Building C object libarchive/CMakeFiles/archive_static.dir/archive_read_support_format_rar5.c.o
+[65/120] Building C object libarchive/CMakeFiles/archive_static.dir/archive_read_support_format_warc.c.o
+[66/120] Building C object libarchive/CMakeFiles/archive_static.dir/archive_read_support_format_tar.c.o
+[67/120] Building C object libarchive/CMakeFiles/archive_static.dir/archive_read_support_format_xar.c.o
+[68/120] Building C object libarchive/CMakeFiles/archive_static.dir/archive_read_support_format_zip.c.o
+[69/120] Building C object libarchive/CMakeFiles/archive_static.dir/archive_string_sprintf.c.o
+[70/120] Building C object libarchive/CMakeFiles/archive_static.dir/archive_string.c.o
+[71/120] Building C object libarchive/CMakeFiles/archive_static.dir/archive_util.c.o
+[72/120] Building C object libarchive/CMakeFiles/archive_static.dir/archive_version_details.c.o
+[73/120] Building C object libarchive/CMakeFiles/archive_static.dir/archive_virtual.c.o
+[74/120] Building C object libarchive/CMakeFiles/archive_static.dir/archive_write.c.o
+[75/120] Building C object libarchive/CMakeFiles/archive_static.dir/archive_write_disk_set_standard_lookup.c.o
+[76/120] Building C object libarchive/CMakeFiles/archive_static.dir/archive_write_disk_posix.c.o
+[77/120] Building C object libarchive/CMakeFiles/archive_static.dir/archive_write_open_fd.c.o
+[78/120] Building C object libarchive/CMakeFiles/archive_static.dir/archive_write_open_memory.c.o
+[79/120] Building C object libarchive/CMakeFiles/archive_static.dir/archive_write_open_filename.c.o
+[80/120] Building C object libarchive/CMakeFiles/archive_static.dir/archive_write_open_file.c.o
+[81/120] Building C object libarchive/CMakeFiles/archive_static.dir/archive_write_add_filter.c.o
+[82/120] Building C object libarchive/CMakeFiles/archive_static.dir/archive_write_add_filter_by_name.c.o
+[83/120] Building C object libarchive/CMakeFiles/archive_static.dir/archive_write_add_filter_b64encode.c.o
+[84/120] Building C object libarchive/CMakeFiles/archive_static.dir/archive_write_add_filter_bzip2.c.o
+[85/120] Building C object libarchive/CMakeFiles/archive_static.dir/archive_write_add_filter_compress.c.o
+[86/120] Building C object libarchive/CMakeFiles/archive_static.dir/archive_write_add_filter_grzip.c.o
+[87/120] Building C object libarchive/CMakeFiles/archive_static.dir/archive_write_add_filter_gzip.c.o
+[88/120] Building C object libarchive/CMakeFiles/archive_static.dir/archive_write_add_filter_lrzip.c.o
+[89/120] Building C object libarchive/CMakeFiles/archive_static.dir/archive_write_add_filter_lz4.c.o
+[90/120] Building C object libarchive/CMakeFiles/archive_static.dir/archive_write_add_filter_lzop.c.o
+[91/120] Building C object libarchive/CMakeFiles/archive_static.dir/archive_write_add_filter_program.c.o
+[92/120] Building C object libarchive/CMakeFiles/archive_static.dir/archive_write_add_filter_none.c.o
+[93/120] Building C object libarchive/CMakeFiles/archive_static.dir/archive_write_add_filter_uuencode.c.o
+[94/120] Building C object libarchive/CMakeFiles/archive_static.dir/archive_write_add_filter_xz.c.o
+[95/120] Building C object libarchive/CMakeFiles/archive_static.dir/archive_write_add_filter_zstd.c.o
+[96/120] Building C object libarchive/CMakeFiles/archive_static.dir/archive_write_set_format.c.o
+[97/120] Building C object libarchive/CMakeFiles/archive_static.dir/archive_write_set_format_7zip.c.o
+/home/osboxes/core-master/wasm/cpp/ext/libarchive/src/libarchive/libarchive/archive_write_set_format_7zip.c:1536:13: warning: implicit truncation from 'int' to a one-bit wide bit-field changes value from 1 to -1 [-Wsingle-bit-bitfield-constant-conversion]
+ 1536 |                 file->dir = 1;
+      |                           ^ ~
+1 warning generated.
+[98/120] Building C object libarchive/CMakeFiles/archive_static.dir/archive_write_set_format_ar.c.o
+[99/120] Building C object libarchive/CMakeFiles/archive_static.dir/archive_write_set_format_by_name.c.o
+[100/120] Building C object libarchive/CMakeFiles/archive_static.dir/archive_write_set_format_cpio.c.o
+[101/120] Building C object libarchive/CMakeFiles/archive_static.dir/archive_write_set_format_cpio_newc.c.o
+[102/120] Building C object libarchive/CMakeFiles/archive_static.dir/archive_write_set_format_filter_by_ext.c.o
+[103/120] Building C object libarchive/CMakeFiles/archive_static.dir/archive_write_set_format_gnutar.c.o
+[104/120] Building C object libarchive/CMakeFiles/archive_static.dir/archive_write_set_format_mtree.c.o
+[105/120] Building C object libarchive/CMakeFiles/archive_static.dir/archive_write_set_format_iso9660.c.o
+/home/osboxes/core-master/wasm/cpp/ext/libarchive/src/libarchive/libarchive/archive_write_set_format_iso9660.c:5127:15: warning: implicit truncation from 'int' to a one-bit wide bit-field changes value from 1 to -1 [-Wsingle-bit-bitfield-constant-conversion]
+ 5127 |                 isoent->dir = 1;
+      |                             ^ ~
+/home/osboxes/core-master/wasm/cpp/ext/libarchive/src/libarchive/libarchive/archive_write_set_format_iso9660.c:5213:14: warning: implicit truncation from 'int' to a one-bit wide bit-field changes value from 1 to -1 [-Wsingle-bit-bitfield-constant-conversion]
+ 5213 |         isoent->dir = 1;
+      |                     ^ ~
+/home/osboxes/core-master/wasm/cpp/ext/libarchive/src/libarchive/libarchive/archive_write_set_format_iso9660.c:5214:18: warning: implicit truncation from 'int' to a one-bit wide bit-field changes value from 1 to -1 [-Wsingle-bit-bitfield-constant-conversion]
+ 5214 |         isoent->virtual = 1;
+      |                         ^ ~
+/home/osboxes/core-master/wasm/cpp/ext/libarchive/src/libarchive/libarchive/archive_write_set_format_iso9660.c:7147:18: warning: implicit truncation from 'int' to a one-bit wide bit-field changes value from 1 to -1 [-Wsingle-bit-bitfield-constant-conversion]
+ 7147 |         isoent->virtual = 1;
+      |                         ^ ~
+/home/osboxes/core-master/wasm/cpp/ext/libarchive/src/libarchive/libarchive/archive_write_set_format_iso9660.c:7433:32: warning: implicit truncation from 'int' to a one-bit wide bit-field changes value from 1 to -1 [-Wsingle-bit-bitfield-constant-conversion]
+ 7433 |                 iso9660->zisofs.detect_magic = 1;
+      |                                              ^ ~
+5 warnings generated.
+[106/120] Building C object libarchive/CMakeFiles/archive_static.dir/archive_write_set_format_pax.c.o
+[107/120] Building C object libarchive/CMakeFiles/archive_static.dir/archive_write_set_format_raw.c.o
+[108/120] Building C object libarchive/CMakeFiles/archive_static.dir/archive_write_set_format_shar.c.o
+[109/120] Building C object libarchive/CMakeFiles/archive_static.dir/archive_write_set_format_ustar.c.o
+[110/120] Building C object libarchive/CMakeFiles/archive_static.dir/archive_write_set_format_v7tar.c.o
+[111/120] Building C object libarchive/CMakeFiles/archive_static.dir/archive_write_set_format_warc.c.o
+[112/120] Building C object libarchive/CMakeFiles/archive_static.dir/archive_write_set_format_xar.c.o
+[113/120] Building C object libarchive/CMakeFiles/archive_static.dir/archive_write_set_options.c.o
+[114/120] Building C object libarchive/CMakeFiles/archive_static.dir/archive_write_set_format_zip.c.o
+[115/120] Building C object libarchive/CMakeFiles/archive_static.dir/archive_write_set_passphrase.c.o
+[116/120] Building C object libarchive/CMakeFiles/archive_static.dir/filter_fork_posix.c.o
+[117/120] Building C object libarchive/CMakeFiles/archive_static.dir/xxhash.c.o
+[118/120] Building C object libarchive/CMakeFiles/archive_static.dir/archive_blake2sp_ref.c.o
+[119/120] Building C object libarchive/CMakeFiles/archive_static.dir/archive_blake2s_ref.c.o
+[120/120] Linking C static library libarchive/libarchive.a
+[59/160] Building CXX object cpp/pep/core/CMakeFiles/pepcorelib.dir/Application.cpp.o
+FAILED: cpp/pep/core/CMakeFiles/pepcorelib.dir/Application.cpp.o 
+/home/osboxes/emsdk/upstream/emscripten/em++ -DBOOST_ATOMIC_NO_LIB -DBOOST_CHRONO_NO_LIB -DBOOST_DATE_TIME_NO_LIB -DBOOST_FILESYSTEM_NO_LIB -DBOOST_IOSTREAMS_NO_LIB -DBOOST_LOG_NO_LIB -DBOOST_LOG_SETUP_NO_LIB -DBOOST_PROGRAM_OPTIONS_NO_LIB -DBOOST_RANDOM_NO_LIB -DBOOST_REGEX_NO_LIB -DBOOST_SYSTEM_NO_LIB -DBOOST_THREAD_NO_LIB -DPEP_COMPILED_MIN_LOG_SEVERITY=verbose -DWITH_UNWINDER -I/home/osboxes/core-master/cpp/ext -I/home/osboxes/core-master/cpp -I/home/osboxes/core-master/wasm/cpp -I/home/osboxes/openssl-wasm/precompiled/include -I/home/osboxes/emsdk/upstream/emscripten/cache/sysroot/lib/wasm32-emscripten/libunwind.a -I/home/osboxes/core-master/wasm/cpp/ext/xxhash/src/xxhash -I/home/osboxes/core-master/wasm/cpp/ext/rxcpp/src/rxcpp/Rx/v2/src -I/home/osboxes/core-master/cpp/ext/tz/include -I/home/osboxes/core-master/wasm/cpp/ext/libarchive/src/libarchive/libarchive -I/home/osboxes/core-master/wasm/cpp/ext/mbed/src/mbed_builder/include -I/home/osboxes/core-master/wasm/cpp/ext/prometheus-cpp/install/include -I/home/osboxes/build/protobuf-wasm/build/protobuf/src -isystem /home/osboxes/boost/prefix/include -DBOOST_LOG_USE_NATIVE_SYSLOG -Werror -Wno-error=deprecated-declarations -Wno-unknown-pragmas -Wno-undef -Wno-disabled-macro-expansion -Wno-#pragma-messages -Wconversion -DBUILD_PROJECT_PATH=\"\" -DBUILD_REF=\"\" -DBUILD_REV=\"\" -DBUILD_PIPELINE_ID= -DBUILD_JOB_ID= -DBUILD_TARGET=\"Emscripten\" -g -std=gnu++17 -MD -MT cpp/pep/core/CMakeFiles/pepcorelib.dir/Application.cpp.o -MF cpp/pep/core/CMakeFiles/pepcorelib.dir/Application.cpp.o.d -o cpp/pep/core/CMakeFiles/pepcorelib.dir/Application.cpp.o -c /home/osboxes/core-master/cpp/pep/core/Application.cpp
+In file included from /home/osboxes/core-master/cpp/pep/core/Application.cpp:1:
+In file included from /home/osboxes/core-master/cpp/pep/core/Application.hpp:10:
+/home/osboxes/core-master/cpp/pep/core/Log.hpp:34:32: error: no template named 'severity_channel_logger_mt' in namespace 'boost::log::sources'; did you mean 'severity_channel_logger'?
+   34 |   typedef boost::log::sources::severity_channel_logger_mt<severity_level, std::string> pep_severity_channel_logger;
+      |           ~~~~~~~~~~~~~~~~~~~~~^~~~~~~~~~~~~~~~~~~~~~~~~~
+      |                                severity_channel_logger
+/home/osboxes/boost/prefix/include/boost/log/sources/severity_channel_logger.hpp:46:7: note: 'severity_channel_logger' declared here
+   46 | class severity_channel_logger :
+      |       ^
+1 error generated.
+em++: error: '/home/osboxes/emsdk/upstream/bin/clang++ -target wasm32-unknown-emscripten -fignore-exceptions -fvisibility=default -mllvm -combiner-global-alias-analysis=false -mllvm -enable-emscripten-sjlj -mllvm -disable-lsr -DEMSCRIPTEN --sysroot=/home/osboxes/emsdk/upstream/emscripten/cache/sysroot -Xclang -iwithsysroot/include/fakesdl -Xclang -iwithsysroot/include/compat -DBOOST_ATOMIC_NO_LIB -DBOOST_CHRONO_NO_LIB -DBOOST_DATE_TIME_NO_LIB -DBOOST_FILESYSTEM_NO_LIB -DBOOST_IOSTREAMS_NO_LIB -DBOOST_LOG_NO_LIB -DBOOST_LOG_SETUP_NO_LIB -DBOOST_PROGRAM_OPTIONS_NO_LIB -DBOOST_RANDOM_NO_LIB -DBOOST_REGEX_NO_LIB -DBOOST_SYSTEM_NO_LIB -DBOOST_THREAD_NO_LIB -DPEP_COMPILED_MIN_LOG_SEVERITY=verbose -DWITH_UNWINDER -I/home/osboxes/core-master/cpp/ext -I/home/osboxes/core-master/cpp -I/home/osboxes/core-master/wasm/cpp -I/home/osboxes/openssl-wasm/precompiled/include -I/home/osboxes/emsdk/upstream/emscripten/cache/sysroot/lib/wasm32-emscripten/libunwind.a -I/home/osboxes/core-master/wasm/cpp/ext/xxhash/src/xxhash -I/home/osboxes/core-master/wasm/cpp/ext/rxcpp/src/rxcpp/Rx/v2/src -I/home/osboxes/core-master/cpp/ext/tz/include -I/home/osboxes/core-master/wasm/cpp/ext/libarchive/src/libarchive/libarchive -I/home/osboxes/core-master/wasm/cpp/ext/mbed/src/mbed_builder/include -I/home/osboxes/core-master/wasm/cpp/ext/prometheus-cpp/install/include -I/home/osboxes/build/protobuf-wasm/build/protobuf/src -isystem /home/osboxes/boost/prefix/include -DBOOST_LOG_USE_NATIVE_SYSLOG -Werror -Wno-error=deprecated-declarations -Wno-unknown-pragmas -Wno-undef -Wno-disabled-macro-expansion -Wno-#pragma-messages -Wconversion -DBUILD_PROJECT_PATH="" -DBUILD_REF="" -DBUILD_REV="" -DBUILD_PIPELINE_ID= -DBUILD_JOB_ID= -DBUILD_TARGET="Emscripten" -g3 -std=gnu++17 -MD -MT cpp/pep/core/CMakeFiles/pepcorelib.dir/Application.cpp.o -MF cpp/pep/core/CMakeFiles/pepcorelib.dir/Application.cpp.o.d -c /home/osboxes/core-master/cpp/pep/core/Application.cpp -o cpp/pep/core/CMakeFiles/pepcorelib.dir/Application.cpp.o' failed (returned 1)
+[60/160] Building CXX object cpp/pep/core/CMakeFiles/pepcorelib.dir/ActivityMonitor.cpp.o
+FAILED: cpp/pep/core/CMakeFiles/pepcorelib.dir/ActivityMonitor.cpp.o 
+/home/osboxes/emsdk/upstream/emscripten/em++ -DBOOST_ATOMIC_NO_LIB -DBOOST_CHRONO_NO_LIB -DBOOST_DATE_TIME_NO_LIB -DBOOST_FILESYSTEM_NO_LIB -DBOOST_IOSTREAMS_NO_LIB -DBOOST_LOG_NO_LIB -DBOOST_LOG_SETUP_NO_LIB -DBOOST_PROGRAM_OPTIONS_NO_LIB -DBOOST_RANDOM_NO_LIB -DBOOST_REGEX_NO_LIB -DBOOST_SYSTEM_NO_LIB -DBOOST_THREAD_NO_LIB -DPEP_COMPILED_MIN_LOG_SEVERITY=verbose -DWITH_UNWINDER -I/home/osboxes/core-master/cpp/ext -I/home/osboxes/core-master/cpp -I/home/osboxes/core-master/wasm/cpp -I/home/osboxes/openssl-wasm/precompiled/include -I/home/osboxes/emsdk/upstream/emscripten/cache/sysroot/lib/wasm32-emscripten/libunwind.a -I/home/osboxes/core-master/wasm/cpp/ext/xxhash/src/xxhash -I/home/osboxes/core-master/wasm/cpp/ext/rxcpp/src/rxcpp/Rx/v2/src -I/home/osboxes/core-master/cpp/ext/tz/include -I/home/osboxes/core-master/wasm/cpp/ext/libarchive/src/libarchive/libarchive -I/home/osboxes/core-master/wasm/cpp/ext/mbed/src/mbed_builder/include -I/home/osboxes/core-master/wasm/cpp/ext/prometheus-cpp/install/include -I/home/osboxes/build/protobuf-wasm/build/protobuf/src -isystem /home/osboxes/boost/prefix/include -DBOOST_LOG_USE_NATIVE_SYSLOG -Werror -Wno-error=deprecated-declarations -Wno-unknown-pragmas -Wno-undef -Wno-disabled-macro-expansion -Wno-#pragma-messages -Wconversion -DBUILD_PROJECT_PATH=\"\" -DBUILD_REF=\"\" -DBUILD_REV=\"\" -DBUILD_PIPELINE_ID= -DBUILD_JOB_ID= -DBUILD_TARGET=\"Emscripten\" -g -std=gnu++17 -MD -MT cpp/pep/core/CMakeFiles/pepcorelib.dir/ActivityMonitor.cpp.o -MF cpp/pep/core/CMakeFiles/pepcorelib.dir/ActivityMonitor.cpp.o.d -o cpp/pep/core/CMakeFiles/pepcorelib.dir/ActivityMonitor.cpp.o -c /home/osboxes/core-master/cpp/pep/core/ActivityMonitor.cpp
+In file included from /home/osboxes/core-master/cpp/pep/core/ActivityMonitor.cpp:1:
+In file included from /home/osboxes/core-master/cpp/pep/core/ActivityMonitor.hpp:13:
+In file included from /home/osboxes/boost/prefix/include/boost/asio.hpp:20:
+In file included from /home/osboxes/boost/prefix/include/boost/asio/any_completion_executor.hpp:22:
+In file included from /home/osboxes/boost/prefix/include/boost/asio/execution.hpp:19:
+In file included from /home/osboxes/boost/prefix/include/boost/asio/execution/any_executor.hpp:24:
+In file included from /home/osboxes/boost/prefix/include/boost/asio/detail/executor_function.hpp:19:
+In file included from /home/osboxes/boost/prefix/include/boost/asio/detail/handler_alloc_helpers.hpp:21:
+In file included from /home/osboxes/boost/prefix/include/boost/asio/detail/recycling_allocator.hpp:20:
+In file included from /home/osboxes/boost/prefix/include/boost/asio/detail/thread_context.hpp:20:
+In file included from /home/osboxes/boost/prefix/include/boost/asio/detail/call_stack.hpp:20:
+/home/osboxes/boost/prefix/include/boost/asio/detail/tss_ptr.hpp:29:3: error: Only Windows and POSIX are supported!
+   29 | # error Only Windows and POSIX are supported!
+      |   ^
+In file included from /home/osboxes/core-master/cpp/pep/core/ActivityMonitor.cpp:1:
+In file included from /home/osboxes/core-master/cpp/pep/core/ActivityMonitor.hpp:13:
+In file included from /home/osboxes/boost/prefix/include/boost/asio.hpp:21:
+In file included from /home/osboxes/boost/prefix/include/boost/asio/any_completion_handler.hpp:29:
+In file included from /home/osboxes/boost/prefix/include/boost/asio/associated_executor.hpp:24:
+In file included from /home/osboxes/boost/prefix/include/boost/asio/system_executor.hpp:671:
+In file included from /home/osboxes/boost/prefix/include/boost/asio/impl/system_executor.hpp:21:
+In file included from /home/osboxes/boost/prefix/include/boost/asio/system_context.hpp:19:
+In file included from /home/osboxes/boost/prefix/include/boost/asio/detail/scheduler.hpp:240:
+In file included from /home/osboxes/boost/prefix/include/boost/asio/detail/impl/scheduler.ipp:25:
+/home/osboxes/boost/prefix/include/boost/asio/detail/signal_blocker.hpp:27:3: error: Only Windows and POSIX are supported!
+   27 | # error Only Windows and POSIX are supported!
+      |   ^
+In file included from /home/osboxes/core-master/cpp/pep/core/ActivityMonitor.cpp:1:
+In file included from /home/osboxes/core-master/cpp/pep/core/ActivityMonitor.hpp:13:
+In file included from /home/osboxes/boost/prefix/include/boost/asio.hpp:21:
+In file included from /home/osboxes/boost/prefix/include/boost/asio/any_completion_handler.hpp:29:
+In file included from /home/osboxes/boost/prefix/include/boost/asio/associated_executor.hpp:24:
+In file included from /home/osboxes/boost/prefix/include/boost/asio/system_executor.hpp:671:
+In file included from /home/osboxes/boost/prefix/include/boost/asio/impl/system_executor.hpp:21:
+In file included from /home/osboxes/boost/prefix/include/boost/asio/system_context.hpp:19:
+In file included from /home/osboxes/boost/prefix/include/boost/asio/detail/scheduler.hpp:240:
+/home/osboxes/boost/prefix/include/boost/asio/detail/impl/scheduler.ipp:136:26: error: no type named 'signal_blocker' in namespace 'boost::asio::detail'
+  136 |     boost::asio::detail::signal_blocker sb;
+      |     ~~~~~~~~~~~~~~~~~~~~~^
+In file included from /home/osboxes/core-master/cpp/pep/core/ActivityMonitor.cpp:1:
+In file included from /home/osboxes/core-master/cpp/pep/core/ActivityMonitor.hpp:13:
+In file included from /home/osboxes/boost/prefix/include/boost/asio.hpp:41:
+In file included from /home/osboxes/boost/prefix/include/boost/asio/basic_signal_set.hpp:25:
+In file included from /home/osboxes/boost/prefix/include/boost/asio/detail/signal_set_service.hpp:291:
+/home/osboxes/boost/prefix/include/boost/asio/detail/impl/signal_set_service.ipp:271:28: error: no type named 'signal_blocker' in namespace 'boost::asio::detail'
+  271 |       boost::asio::detail::signal_blocker blocker;
+      |       ~~~~~~~~~~~~~~~~~~~~~^
+In file included from /home/osboxes/core-master/cpp/pep/core/ActivityMonitor.cpp:2:
+/home/osboxes/core-master/cpp/pep/core/Log.hpp:34:32: error: no template named 'severity_channel_logger_mt' in namespace 'boost::log::sources'; did you mean 'severity_channel_logger'?
+   34 |   typedef boost::log::sources::severity_channel_logger_mt<severity_level, std::string> pep_severity_channel_logger;
+      |           ~~~~~~~~~~~~~~~~~~~~~^~~~~~~~~~~~~~~~~~~~~~~~~~
+      |                                severity_channel_logger
+/home/osboxes/boost/prefix/include/boost/log/sources/severity_channel_logger.hpp:46:7: note: 'severity_channel_logger' declared here
+   46 | class severity_channel_logger :
+      |       ^
+In file included from /home/osboxes/core-master/cpp/pep/core/ActivityMonitor.cpp:1:
+In file included from /home/osboxes/core-master/cpp/pep/core/ActivityMonitor.hpp:13:
+In file included from /home/osboxes/boost/prefix/include/boost/asio.hpp:20:
+In file included from /home/osboxes/boost/prefix/include/boost/asio/any_completion_executor.hpp:22:
+In file included from /home/osboxes/boost/prefix/include/boost/asio/execution.hpp:19:
+In file included from /home/osboxes/boost/prefix/include/boost/asio/execution/any_executor.hpp:24:
+In file included from /home/osboxes/boost/prefix/include/boost/asio/detail/executor_function.hpp:19:
+In file included from /home/osboxes/boost/prefix/include/boost/asio/detail/handler_alloc_helpers.hpp:21:
+In file included from /home/osboxes/boost/prefix/include/boost/asio/detail/recycling_allocator.hpp:20:
+In file included from /home/osboxes/boost/prefix/include/boost/asio/detail/thread_context.hpp:20:
+/home/osboxes/boost/prefix/include/boost/asio/detail/call_stack.hpp:108:14: error: no viable conversion from 'tss_ptr<context>' to 'context *'
+  108 |     context* elem = top_;
+      |              ^      ~~~~
+/home/osboxes/boost/prefix/include/boost/asio/detail/impl/thread_context.ipp:28:29: note: in instantiation of member function 'boost::asio::detail::call_stack<boost::asio::detail::thread_context, boost::asio::detail::thread_info_base>::top' requested here
+   28 |   return thread_call_stack::top();
+      |                             ^
+In file included from /home/osboxes/core-master/cpp/pep/core/ActivityMonitor.cpp:1:
+In file included from /home/osboxes/core-master/cpp/pep/core/ActivityMonitor.hpp:13:
+In file included from /home/osboxes/boost/prefix/include/boost/asio.hpp:20:
+In file included from /home/osboxes/boost/prefix/include/boost/asio/any_completion_executor.hpp:22:
+In file included from /home/osboxes/boost/prefix/include/boost/asio/execution.hpp:19:
+In file included from /home/osboxes/boost/prefix/include/boost/asio/execution/any_executor.hpp:24:
+In file included from /home/osboxes/boost/prefix/include/boost/asio/detail/executor_function.hpp:19:
+In file included from /home/osboxes/boost/prefix/include/boost/asio/detail/handler_alloc_helpers.hpp:21:
+In file included from /home/osboxes/boost/prefix/include/boost/asio/detail/recycling_allocator.hpp:20:
+In file included from /home/osboxes/boost/prefix/include/boost/asio/detail/thread_context.hpp:20:
+/home/osboxes/boost/prefix/include/boost/asio/detail/call_stack.hpp:52:9: error: no viable conversion from 'tss_ptr<typename call_stack<thread_context, thread_info_base>::context>' to 'context *'
+   52 |         next_(call_stack<Key, Value>::top_)
+      |         ^     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/osboxes/boost/prefix/include/boost/asio/detail/impl/scheduler.ipp:205:30: note: in instantiation of member function 'boost::asio::detail::call_stack<boost::asio::detail::thread_context, boost::asio::detail::thread_info_base>::context::context' requested here
+  205 |   thread_call_stack::context ctx(this, this_thread);
+      |                              ^
+In file included from /home/osboxes/core-master/cpp/pep/core/ActivityMonitor.cpp:1:
+In file included from /home/osboxes/core-master/cpp/pep/core/ActivityMonitor.hpp:13:
+In file included from /home/osboxes/boost/prefix/include/boost/asio.hpp:20:
+In file included from /home/osboxes/boost/prefix/include/boost/asio/any_completion_executor.hpp:22:
+In file included from /home/osboxes/boost/prefix/include/boost/asio/execution.hpp:19:
+In file included from /home/osboxes/boost/prefix/include/boost/asio/execution/any_executor.hpp:24:
+In file included from /home/osboxes/boost/prefix/include/boost/asio/detail/executor_function.hpp:19:
+In file included from /home/osboxes/boost/prefix/include/boost/asio/detail/handler_alloc_helpers.hpp:21:
+In file included from /home/osboxes/boost/prefix/include/boost/asio/detail/recycling_allocator.hpp:20:
+In file included from /home/osboxes/boost/prefix/include/boost/asio/detail/thread_context.hpp:20:
+/home/osboxes/boost/prefix/include/boost/asio/detail/call_stack.hpp:95:14: error: no viable conversion from 'tss_ptr<typename call_stack<thread_context, thread_info_base>::context>' to 'context *'
+   95 |     context* elem = top_;
+      |              ^      ~~~~
+/home/osboxes/boost/prefix/include/boost/asio/detail/impl/scheduler.ipp:330:54: note: in instantiation of member function 'boost::asio::detail::call_stack<boost::asio::detail::thread_context, boost::asio::detail::thread_info_base>::contains' requested here
+  330 |   thread_info_base* this_thread = thread_call_stack::contains(this);
+      |                                                      ^
+In file included from /home/osboxes/core-master/cpp/pep/core/ActivityMonitor.cpp:1:
+In file included from /home/osboxes/core-master/cpp/pep/core/ActivityMonitor.hpp:13:
+In file included from /home/osboxes/boost/prefix/include/boost/asio.hpp:20:
+In file included from /home/osboxes/boost/prefix/include/boost/asio/any_completion_executor.hpp:22:
+In file included from /home/osboxes/boost/prefix/include/boost/asio/execution.hpp:19:
+In file included from /home/osboxes/boost/prefix/include/boost/asio/execution/any_executor.hpp:24:
+In file included from /home/osboxes/boost/prefix/include/boost/asio/detail/executor_function.hpp:19:
+In file included from /home/osboxes/boost/prefix/include/boost/asio/detail/handler_alloc_helpers.hpp:21:
+In file included from /home/osboxes/boost/prefix/include/boost/asio/detail/recycling_allocator.hpp:20:
+In file included from /home/osboxes/boost/prefix/include/boost/asio/detail/thread_context.hpp:20:
+/home/osboxes/boost/prefix/include/boost/asio/detail/call_stack.hpp:95:14: error: no viable conversion from 'tss_ptr<context>' to 'context *'
+   95 |     context* elem = top_;
+      |              ^      ~~~~
+/home/osboxes/boost/prefix/include/boost/asio/detail/impl/strand_service.ipp:92:35: note: in instantiation of member function 'boost::asio::detail::call_stack<boost::asio::detail::strand_service::strand_impl>::contains' requested here
+   92 |   return call_stack<strand_impl>::contains(impl) != 0;
+      |                                   ^
+In file included from /home/osboxes/core-master/cpp/pep/core/ActivityMonitor.cpp:1:
+In file included from /home/osboxes/core-master/cpp/pep/core/ActivityMonitor.hpp:13:
+In file included from /home/osboxes/boost/prefix/include/boost/asio.hpp:20:
+In file included from /home/osboxes/boost/prefix/include/boost/asio/any_completion_executor.hpp:22:
+In file included from /home/osboxes/boost/prefix/include/boost/asio/execution.hpp:19:
+In file included from /home/osboxes/boost/prefix/include/boost/asio/execution/any_executor.hpp:24:
+In file included from /home/osboxes/boost/prefix/include/boost/asio/detail/executor_function.hpp:19:
+In file included from /home/osboxes/boost/prefix/include/boost/asio/detail/handler_alloc_helpers.hpp:21:
+In file included from /home/osboxes/boost/prefix/include/boost/asio/detail/recycling_allocator.hpp:20:
+In file included from /home/osboxes/boost/prefix/include/boost/asio/detail/thread_context.hpp:20:
+/home/osboxes/boost/prefix/include/boost/asio/detail/call_stack.hpp:42:9: error: no viable conversion from 'tss_ptr<typename call_stack<strand_impl, unsigned char>::context>' to 'context *'
+   42 |         next_(call_stack<Key, Value>::top_)
+      |         ^     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/osboxes/boost/prefix/include/boost/asio/detail/impl/strand_service.ipp:125:38: note: in instantiation of member function 'boost::asio::detail::call_stack<boost::asio::detail::strand_service::strand_impl>::context::context' requested here
+  125 |     call_stack<strand_impl>::context ctx(impl);
+      |                                      ^
+In file included from /home/osboxes/core-master/cpp/pep/core/ActivityMonitor.cpp:1:
+In file included from /home/osboxes/core-master/cpp/pep/core/ActivityMonitor.hpp:13:
+In file included from /home/osboxes/boost/prefix/include/boost/asio.hpp:20:
+In file included from /home/osboxes/boost/prefix/include/boost/asio/any_completion_executor.hpp:22:
+In file included from /home/osboxes/boost/prefix/include/boost/asio/execution.hpp:19:
+In file included from /home/osboxes/boost/prefix/include/boost/asio/execution/any_executor.hpp:24:
+In file included from /home/osboxes/boost/prefix/include/boost/asio/detail/executor_function.hpp:19:
+In file included from /home/osboxes/boost/prefix/include/boost/asio/detail/handler_alloc_helpers.hpp:21:
+In file included from /home/osboxes/boost/prefix/include/boost/asio/detail/recycling_allocator.hpp:20:
+In file included from /home/osboxes/boost/prefix/include/boost/asio/detail/thread_context.hpp:20:
+/home/osboxes/boost/prefix/include/boost/asio/detail/call_stack.hpp:95:14: error: no viable conversion from 'tss_ptr<context>' to 'context *'
+   95 |     context* elem = top_;
+      |              ^      ~~~~
+/home/osboxes/boost/prefix/include/boost/asio/detail/impl/strand_executor_service.ipp:127:37: note: in instantiation of member function 'boost::asio::detail::call_stack<boost::asio::detail::strand_executor_service::strand_impl>::contains' requested here
+  127 |   return !!call_stack<strand_impl>::contains(impl.get());
+      |                                     ^
+In file included from /home/osboxes/core-master/cpp/pep/core/ActivityMonitor.cpp:1:
+In file included from /home/osboxes/core-master/cpp/pep/core/ActivityMonitor.hpp:13:
+In file included from /home/osboxes/boost/prefix/include/boost/asio.hpp:20:
+In file included from /home/osboxes/boost/prefix/include/boost/asio/any_completion_executor.hpp:22:
+In file included from /home/osboxes/boost/prefix/include/boost/asio/execution.hpp:19:
+In file included from /home/osboxes/boost/prefix/include/boost/asio/execution/any_executor.hpp:24:
+In file included from /home/osboxes/boost/prefix/include/boost/asio/detail/executor_function.hpp:19:
+In file included from /home/osboxes/boost/prefix/include/boost/asio/detail/handler_alloc_helpers.hpp:21:
+In file included from /home/osboxes/boost/prefix/include/boost/asio/detail/recycling_allocator.hpp:20:
+In file included from /home/osboxes/boost/prefix/include/boost/asio/detail/thread_context.hpp:20:
+/home/osboxes/boost/prefix/include/boost/asio/detail/call_stack.hpp:42:9: error: no viable conversion from 'tss_ptr<typename call_stack<strand_impl, unsigned char>::context>' to 'context *'
+   42 |         next_(call_stack<Key, Value>::top_)
+      |         ^     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/osboxes/boost/prefix/include/boost/asio/detail/impl/strand_executor_service.ipp:142:36: note: in instantiation of member function 'boost::asio::detail::call_stack<boost::asio::detail::strand_executor_service::strand_impl>::context::context' requested here
+  142 |   call_stack<strand_impl>::context ctx(impl.get());
+      |                                    ^
+12 errors generated.
+em++: error: '/home/osboxes/emsdk/upstream/bin/clang++ -target wasm32-unknown-emscripten -fignore-exceptions -fvisibility=default -mllvm -combiner-global-alias-analysis=false -mllvm -enable-emscripten-sjlj -mllvm -disable-lsr -DEMSCRIPTEN --sysroot=/home/osboxes/emsdk/upstream/emscripten/cache/sysroot -Xclang -iwithsysroot/include/fakesdl -Xclang -iwithsysroot/include/compat -DBOOST_ATOMIC_NO_LIB -DBOOST_CHRONO_NO_LIB -DBOOST_DATE_TIME_NO_LIB -DBOOST_FILESYSTEM_NO_LIB -DBOOST_IOSTREAMS_NO_LIB -DBOOST_LOG_NO_LIB -DBOOST_LOG_SETUP_NO_LIB -DBOOST_PROGRAM_OPTIONS_NO_LIB -DBOOST_RANDOM_NO_LIB -DBOOST_REGEX_NO_LIB -DBOOST_SYSTEM_NO_LIB -DBOOST_THREAD_NO_LIB -DPEP_COMPILED_MIN_LOG_SEVERITY=verbose -DWITH_UNWINDER -I/home/osboxes/core-master/cpp/ext -I/home/osboxes/core-master/cpp -I/home/osboxes/core-master/wasm/cpp -I/home/osboxes/openssl-wasm/precompiled/include -I/home/osboxes/emsdk/upstream/emscripten/cache/sysroot/lib/wasm32-emscripten/libunwind.a -I/home/osboxes/core-master/wasm/cpp/ext/xxhash/src/xxhash -I/home/osboxes/core-master/wasm/cpp/ext/rxcpp/src/rxcpp/Rx/v2/src -I/home/osboxes/core-master/cpp/ext/tz/include -I/home/osboxes/core-master/wasm/cpp/ext/libarchive/src/libarchive/libarchive -I/home/osboxes/core-master/wasm/cpp/ext/mbed/src/mbed_builder/include -I/home/osboxes/core-master/wasm/cpp/ext/prometheus-cpp/install/include -I/home/osboxes/build/protobuf-wasm/build/protobuf/src -isystem /home/osboxes/boost/prefix/include -DBOOST_LOG_USE_NATIVE_SYSLOG -Werror -Wno-error=deprecated-declarations -Wno-unknown-pragmas -Wno-undef -Wno-disabled-macro-expansion -Wno-#pragma-messages -Wconversion -DBUILD_PROJECT_PATH="" -DBUILD_REF="" -DBUILD_REV="" -DBUILD_PIPELINE_ID= -DBUILD_JOB_ID= -DBUILD_TARGET="Emscripten" -g3 -std=gnu++17 -MD -MT cpp/pep/core/CMakeFiles/pepcorelib.dir/ActivityMonitor.cpp.o -MF cpp/pep/core/CMakeFiles/pepcorelib.dir/ActivityMonitor.cpp.o.d -c /home/osboxes/core-master/cpp/pep/core/ActivityMonitor.cpp -o cpp/pep/core/CMakeFiles/pepcorelib.dir/ActivityMonitor.cpp.o' failed (returned 1)
+[61/160] Building CXX object cpp/pep/core/CMakeFiles/pepcorelib.dir/TLSMessageProtocol.cpp.o
+FAILED: cpp/pep/core/CMakeFiles/pepcorelib.dir/TLSMessageProtocol.cpp.o 
+/home/osboxes/emsdk/upstream/emscripten/em++ -DBOOST_ATOMIC_NO_LIB -DBOOST_CHRONO_NO_LIB -DBOOST_DATE_TIME_NO_LIB -DBOOST_FILESYSTEM_NO_LIB -DBOOST_IOSTREAMS_NO_LIB -DBOOST_LOG_NO_LIB -DBOOST_LOG_SETUP_NO_LIB -DBOOST_PROGRAM_OPTIONS_NO_LIB -DBOOST_RANDOM_NO_LIB -DBOOST_REGEX_NO_LIB -DBOOST_SYSTEM_NO_LIB -DBOOST_THREAD_NO_LIB -DPEP_COMPILED_MIN_LOG_SEVERITY=verbose -DWITH_UNWINDER -I/home/osboxes/core-master/cpp/ext -I/home/osboxes/core-master/cpp -I/home/osboxes/core-master/wasm/cpp -I/home/osboxes/openssl-wasm/precompiled/include -I/home/osboxes/emsdk/upstream/emscripten/cache/sysroot/lib/wasm32-emscripten/libunwind.a -I/home/osboxes/core-master/wasm/cpp/ext/xxhash/src/xxhash -I/home/osboxes/core-master/wasm/cpp/ext/rxcpp/src/rxcpp/Rx/v2/src -I/home/osboxes/core-master/cpp/ext/tz/include -I/home/osboxes/core-master/wasm/cpp/ext/libarchive/src/libarchive/libarchive -I/home/osboxes/core-master/wasm/cpp/ext/mbed/src/mbed_builder/include -I/home/osboxes/core-master/wasm/cpp/ext/prometheus-cpp/install/include -I/home/osboxes/build/protobuf-wasm/build/protobuf/src -isystem /home/osboxes/boost/prefix/include -DBOOST_LOG_USE_NATIVE_SYSLOG -Werror -Wno-error=deprecated-declarations -Wno-unknown-pragmas -Wno-undef -Wno-disabled-macro-expansion -Wno-#pragma-messages -Wconversion -DBUILD_PROJECT_PATH=\"\" -DBUILD_REF=\"\" -DBUILD_REV=\"\" -DBUILD_PIPELINE_ID= -DBUILD_JOB_ID= -DBUILD_TARGET=\"Emscripten\" -g -std=gnu++17 -MD -MT cpp/pep/core/CMakeFiles/pepcorelib.dir/TLSMessageProtocol.cpp.o -MF cpp/pep/core/CMakeFiles/pepcorelib.dir/TLSMessageProtocol.cpp.o.d -o cpp/pep/core/CMakeFiles/pepcorelib.dir/TLSMessageProtocol.cpp.o -c /home/osboxes/core-master/cpp/pep/core/TLSMessageProtocol.cpp
+In file included from /home/osboxes/core-master/cpp/pep/core/TLSMessageProtocol.cpp:2:
+/home/osboxes/core-master/cpp/pep/core/Log.hpp:34:32: error: no template named 'severity_channel_logger_mt' in namespace 'boost::log::sources'; did you mean 'severity_channel_logger'?
+   34 |   typedef boost::log::sources::severity_channel_logger_mt<severity_level, std::string> pep_severity_channel_logger;
+      |           ~~~~~~~~~~~~~~~~~~~~~^~~~~~~~~~~~~~~~~~~~~~~~~~
+      |                                severity_channel_logger
+/home/osboxes/boost/prefix/include/boost/log/sources/severity_channel_logger.hpp:46:7: note: 'severity_channel_logger' declared here
+   46 | class severity_channel_logger :
+      |       ^
+In file included from /home/osboxes/core-master/cpp/pep/core/TLSMessageProtocol.cpp:3:
+In file included from /home/osboxes/core-master/cpp/pep/core/OnAsio.hpp:8:
+In file included from /home/osboxes/boost/prefix/include/boost/asio.hpp:20:
+In file included from /home/osboxes/boost/prefix/include/boost/asio/any_completion_executor.hpp:22:
+In file included from /home/osboxes/boost/prefix/include/boost/asio/execution.hpp:19:
+In file included from /home/osboxes/boost/prefix/include/boost/asio/execution/any_executor.hpp:24:
+In file included from /home/osboxes/boost/prefix/include/boost/asio/detail/executor_function.hpp:19:
+In file included from /home/osboxes/boost/prefix/include/boost/asio/detail/handler_alloc_helpers.hpp:21:
+In file included from /home/osboxes/boost/prefix/include/boost/asio/detail/recycling_allocator.hpp:20:
+In file included from /home/osboxes/boost/prefix/include/boost/asio/detail/thread_context.hpp:20:
+In file included from /home/osboxes/boost/prefix/include/boost/asio/detail/call_stack.hpp:20:
+/home/osboxes/boost/prefix/include/boost/asio/detail/tss_ptr.hpp:29:3: error: Only Windows and POSIX are supported!
+   29 | # error Only Windows and POSIX are supported!
+      |   ^
+In file included from /home/osboxes/core-master/cpp/pep/core/TLSMessageProtocol.cpp:3:
+In file included from /home/osboxes/core-master/cpp/pep/core/OnAsio.hpp:8:
+In file included from /home/osboxes/boost/prefix/include/boost/asio.hpp:21:
+In file included from /home/osboxes/boost/prefix/include/boost/asio/any_completion_handler.hpp:29:
+In file included from /home/osboxes/boost/prefix/include/boost/asio/associated_executor.hpp:24:
+In file included from /home/osboxes/boost/prefix/include/boost/asio/system_executor.hpp:671:
+In file included from /home/osboxes/boost/prefix/include/boost/asio/impl/system_executor.hpp:21:
+In file included from /home/osboxes/boost/prefix/include/boost/asio/system_context.hpp:19:
+In file included from /home/osboxes/boost/prefix/include/boost/asio/detail/scheduler.hpp:240:
+In file included from /home/osboxes/boost/prefix/include/boost/asio/detail/impl/scheduler.ipp:25:
+/home/osboxes/boost/prefix/include/boost/asio/detail/signal_blocker.hpp:27:3: error: Only Windows and POSIX are supported!
+   27 | # error Only Windows and POSIX are supported!
+      |   ^
+In file included from /home/osboxes/core-master/cpp/pep/core/TLSMessageProtocol.cpp:3:
+In file included from /home/osboxes/core-master/cpp/pep/core/OnAsio.hpp:8:
+In file included from /home/osboxes/boost/prefix/include/boost/asio.hpp:21:
+In file included from /home/osboxes/boost/prefix/include/boost/asio/any_completion_handler.hpp:29:
+In file included from /home/osboxes/boost/prefix/include/boost/asio/associated_executor.hpp:24:
+In file included from /home/osboxes/boost/prefix/include/boost/asio/system_executor.hpp:671:
+In file included from /home/osboxes/boost/prefix/include/boost/asio/impl/system_executor.hpp:21:
+In file included from /home/osboxes/boost/prefix/include/boost/asio/system_context.hpp:19:
+In file included from /home/osboxes/boost/prefix/include/boost/asio/detail/scheduler.hpp:240:
+/home/osboxes/boost/prefix/include/boost/asio/detail/impl/scheduler.ipp:136:26: error: no type named 'signal_blocker' in namespace 'boost::asio::detail'
+  136 |     boost::asio::detail::signal_blocker sb;
+      |     ~~~~~~~~~~~~~~~~~~~~~^
+In file included from /home/osboxes/core-master/cpp/pep/core/TLSMessageProtocol.cpp:3:
+In file included from /home/osboxes/core-master/cpp/pep/core/OnAsio.hpp:8:
+In file included from /home/osboxes/boost/prefix/include/boost/asio.hpp:41:
+In file included from /home/osboxes/boost/prefix/include/boost/asio/basic_signal_set.hpp:25:
+In file included from /home/osboxes/boost/prefix/include/boost/asio/detail/signal_set_service.hpp:291:
+/home/osboxes/boost/prefix/include/boost/asio/detail/impl/signal_set_service.ipp:271:28: error: no type named 'signal_blocker' in namespace 'boost::asio::detail'
+  271 |       boost::asio::detail::signal_blocker blocker;
+      |       ~~~~~~~~~~~~~~~~~~~~~^
+In file included from /home/osboxes/core-master/cpp/pep/core/TLSMessageProtocol.cpp:3:
+In file included from /home/osboxes/core-master/cpp/pep/core/OnAsio.hpp:8:
+In file included from /home/osboxes/boost/prefix/include/boost/asio.hpp:20:
+In file included from /home/osboxes/boost/prefix/include/boost/asio/any_completion_executor.hpp:22:
+In file included from /home/osboxes/boost/prefix/include/boost/asio/execution.hpp:19:
+In file included from /home/osboxes/boost/prefix/include/boost/asio/execution/any_executor.hpp:24:
+In file included from /home/osboxes/boost/prefix/include/boost/asio/detail/executor_function.hpp:19:
+In file included from /home/osboxes/boost/prefix/include/boost/asio/detail/handler_alloc_helpers.hpp:21:
+In file included from /home/osboxes/boost/prefix/include/boost/asio/detail/recycling_allocator.hpp:20:
+In file included from /home/osboxes/boost/prefix/include/boost/asio/detail/thread_context.hpp:20:
+/home/osboxes/boost/prefix/include/boost/asio/detail/call_stack.hpp:108:14: error: no viable conversion from 'tss_ptr<context>' to 'context *'
+  108 |     context* elem = top_;
+      |              ^      ~~~~
+/home/osboxes/boost/prefix/include/boost/asio/detail/impl/thread_context.ipp:28:29: note: in instantiation of member function 'boost::asio::detail::call_stack<boost::asio::detail::thread_context, boost::asio::detail::thread_info_base>::top' requested here
+   28 |   return thread_call_stack::top();
+      |                             ^
+In file included from /home/osboxes/core-master/cpp/pep/core/TLSMessageProtocol.cpp:3:
+In file included from /home/osboxes/core-master/cpp/pep/core/OnAsio.hpp:8:
+In file included from /home/osboxes/boost/prefix/include/boost/asio.hpp:20:
+In file included from /home/osboxes/boost/prefix/include/boost/asio/any_completion_executor.hpp:22:
+In file included from /home/osboxes/boost/prefix/include/boost/asio/execution.hpp:19:
+In file included from /home/osboxes/boost/prefix/include/boost/asio/execution/any_executor.hpp:24:
+In file included from /home/osboxes/boost/prefix/include/boost/asio/detail/executor_function.hpp:19:
+In file included from /home/osboxes/boost/prefix/include/boost/asio/detail/handler_alloc_helpers.hpp:21:
+In file included from /home/osboxes/boost/prefix/include/boost/asio/detail/recycling_allocator.hpp:20:
+In file included from /home/osboxes/boost/prefix/include/boost/asio/detail/thread_context.hpp:20:
+/home/osboxes/boost/prefix/include/boost/asio/detail/call_stack.hpp:52:9: error: no viable conversion from 'tss_ptr<typename call_stack<thread_context, thread_info_base>::context>' to 'context *'
+   52 |         next_(call_stack<Key, Value>::top_)
+      |         ^     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/osboxes/boost/prefix/include/boost/asio/detail/impl/scheduler.ipp:205:30: note: in instantiation of member function 'boost::asio::detail::call_stack<boost::asio::detail::thread_context, boost::asio::detail::thread_info_base>::context::context' requested here
+  205 |   thread_call_stack::context ctx(this, this_thread);
+      |                              ^
+In file included from /home/osboxes/core-master/cpp/pep/core/TLSMessageProtocol.cpp:3:
+In file included from /home/osboxes/core-master/cpp/pep/core/OnAsio.hpp:8:
+In file included from /home/osboxes/boost/prefix/include/boost/asio.hpp:20:
+In file included from /home/osboxes/boost/prefix/include/boost/asio/any_completion_executor.hpp:22:
+In file included from /home/osboxes/boost/prefix/include/boost/asio/execution.hpp:19:
+In file included from /home/osboxes/boost/prefix/include/boost/asio/execution/any_executor.hpp:24:
+In file included from /home/osboxes/boost/prefix/include/boost/asio/detail/executor_function.hpp:19:
+In file included from /home/osboxes/boost/prefix/include/boost/asio/detail/handler_alloc_helpers.hpp:21:
+In file included from /home/osboxes/boost/prefix/include/boost/asio/detail/recycling_allocator.hpp:20:
+In file included from /home/osboxes/boost/prefix/include/boost/asio/detail/thread_context.hpp:20:
+/home/osboxes/boost/prefix/include/boost/asio/detail/call_stack.hpp:95:14: error: no viable conversion from 'tss_ptr<typename call_stack<thread_context, thread_info_base>::context>' to 'context *'
+   95 |     context* elem = top_;
+      |              ^      ~~~~
+/home/osboxes/boost/prefix/include/boost/asio/detail/impl/scheduler.ipp:330:54: note: in instantiation of member function 'boost::asio::detail::call_stack<boost::asio::detail::thread_context, boost::asio::detail::thread_info_base>::contains' requested here
+  330 |   thread_info_base* this_thread = thread_call_stack::contains(this);
+      |                                                      ^
+In file included from /home/osboxes/core-master/cpp/pep/core/TLSMessageProtocol.cpp:3:
+In file included from /home/osboxes/core-master/cpp/pep/core/OnAsio.hpp:8:
+In file included from /home/osboxes/boost/prefix/include/boost/asio.hpp:20:
+In file included from /home/osboxes/boost/prefix/include/boost/asio/any_completion_executor.hpp:22:
+In file included from /home/osboxes/boost/prefix/include/boost/asio/execution.hpp:19:
+In file included from /home/osboxes/boost/prefix/include/boost/asio/execution/any_executor.hpp:24:
+In file included from /home/osboxes/boost/prefix/include/boost/asio/detail/executor_function.hpp:19:
+In file included from /home/osboxes/boost/prefix/include/boost/asio/detail/handler_alloc_helpers.hpp:21:
+In file included from /home/osboxes/boost/prefix/include/boost/asio/detail/recycling_allocator.hpp:20:
+In file included from /home/osboxes/boost/prefix/include/boost/asio/detail/thread_context.hpp:20:
+/home/osboxes/boost/prefix/include/boost/asio/detail/call_stack.hpp:95:14: error: no viable conversion from 'tss_ptr<context>' to 'context *'
+   95 |     context* elem = top_;
+      |              ^      ~~~~
+/home/osboxes/boost/prefix/include/boost/asio/detail/impl/strand_service.ipp:92:35: note: in instantiation of member function 'boost::asio::detail::call_stack<boost::asio::detail::strand_service::strand_impl>::contains' requested here
+   92 |   return call_stack<strand_impl>::contains(impl) != 0;
+      |                                   ^
+In file included from /home/osboxes/core-master/cpp/pep/core/TLSMessageProtocol.cpp:3:
+In file included from /home/osboxes/core-master/cpp/pep/core/OnAsio.hpp:8:
+In file included from /home/osboxes/boost/prefix/include/boost/asio.hpp:20:
+In file included from /home/osboxes/boost/prefix/include/boost/asio/any_completion_executor.hpp:22:
+In file included from /home/osboxes/boost/prefix/include/boost/asio/execution.hpp:19:
+In file included from /home/osboxes/boost/prefix/include/boost/asio/execution/any_executor.hpp:24:
+In file included from /home/osboxes/boost/prefix/include/boost/asio/detail/executor_function.hpp:19:
+In file included from /home/osboxes/boost/prefix/include/boost/asio/detail/handler_alloc_helpers.hpp:21:
+In file included from /home/osboxes/boost/prefix/include/boost/asio/detail/recycling_allocator.hpp:20:
+In file included from /home/osboxes/boost/prefix/include/boost/asio/detail/thread_context.hpp:20:
+/home/osboxes/boost/prefix/include/boost/asio/detail/call_stack.hpp:42:9: error: no viable conversion from 'tss_ptr<typename call_stack<strand_impl, unsigned char>::context>' to 'context *'
+   42 |         next_(call_stack<Key, Value>::top_)
+      |         ^     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/osboxes/boost/prefix/include/boost/asio/detail/impl/strand_service.ipp:125:38: note: in instantiation of member function 'boost::asio::detail::call_stack<boost::asio::detail::strand_service::strand_impl>::context::context' requested here
+  125 |     call_stack<strand_impl>::context ctx(impl);
+      |                                      ^
+In file included from /home/osboxes/core-master/cpp/pep/core/TLSMessageProtocol.cpp:3:
+In file included from /home/osboxes/core-master/cpp/pep/core/OnAsio.hpp:8:
+In file included from /home/osboxes/boost/prefix/include/boost/asio.hpp:20:
+In file included from /home/osboxes/boost/prefix/include/boost/asio/any_completion_executor.hpp:22:
+In file included from /home/osboxes/boost/prefix/include/boost/asio/execution.hpp:19:
+In file included from /home/osboxes/boost/prefix/include/boost/asio/execution/any_executor.hpp:24:
+In file included from /home/osboxes/boost/prefix/include/boost/asio/detail/executor_function.hpp:19:
+In file included from /home/osboxes/boost/prefix/include/boost/asio/detail/handler_alloc_helpers.hpp:21:
+In file included from /home/osboxes/boost/prefix/include/boost/asio/detail/recycling_allocator.hpp:20:
+In file included from /home/osboxes/boost/prefix/include/boost/asio/detail/thread_context.hpp:20:
+/home/osboxes/boost/prefix/include/boost/asio/detail/call_stack.hpp:95:14: error: no viable conversion from 'tss_ptr<context>' to 'context *'
+   95 |     context* elem = top_;
+      |              ^      ~~~~
+/home/osboxes/boost/prefix/include/boost/asio/detail/impl/strand_executor_service.ipp:127:37: note: in instantiation of member function 'boost::asio::detail::call_stack<boost::asio::detail::strand_executor_service::strand_impl>::contains' requested here
+  127 |   return !!call_stack<strand_impl>::contains(impl.get());
+      |                                     ^
+In file included from /home/osboxes/core-master/cpp/pep/core/TLSMessageProtocol.cpp:3:
+In file included from /home/osboxes/core-master/cpp/pep/core/OnAsio.hpp:8:
+In file included from /home/osboxes/boost/prefix/include/boost/asio.hpp:20:
+In file included from /home/osboxes/boost/prefix/include/boost/asio/any_completion_executor.hpp:22:
+In file included from /home/osboxes/boost/prefix/include/boost/asio/execution.hpp:19:
+In file included from /home/osboxes/boost/prefix/include/boost/asio/execution/any_executor.hpp:24:
+In file included from /home/osboxes/boost/prefix/include/boost/asio/detail/executor_function.hpp:19:
+In file included from /home/osboxes/boost/prefix/include/boost/asio/detail/handler_alloc_helpers.hpp:21:
+In file included from /home/osboxes/boost/prefix/include/boost/asio/detail/recycling_allocator.hpp:20:
+In file included from /home/osboxes/boost/prefix/include/boost/asio/detail/thread_context.hpp:20:
+/home/osboxes/boost/prefix/include/boost/asio/detail/call_stack.hpp:42:9: error: no viable conversion from 'tss_ptr<typename call_stack<strand_impl, unsigned char>::context>' to 'context *'
+   42 |         next_(call_stack<Key, Value>::top_)
+      |         ^     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/osboxes/boost/prefix/include/boost/asio/detail/impl/strand_executor_service.ipp:142:36: note: in instantiation of member function 'boost::asio::detail::call_stack<boost::asio::detail::strand_executor_service::strand_impl>::context::context' requested here
+  142 |   call_stack<strand_impl>::context ctx(impl.get());
+      |                                    ^
+12 errors generated.
+em++: error: '/home/osboxes/emsdk/upstream/bin/clang++ -target wasm32-unknown-emscripten -fignore-exceptions -fvisibility=default -mllvm -combiner-global-alias-analysis=false -mllvm -enable-emscripten-sjlj -mllvm -disable-lsr -DEMSCRIPTEN --sysroot=/home/osboxes/emsdk/upstream/emscripten/cache/sysroot -Xclang -iwithsysroot/include/fakesdl -Xclang -iwithsysroot/include/compat -DBOOST_ATOMIC_NO_LIB -DBOOST_CHRONO_NO_LIB -DBOOST_DATE_TIME_NO_LIB -DBOOST_FILESYSTEM_NO_LIB -DBOOST_IOSTREAMS_NO_LIB -DBOOST_LOG_NO_LIB -DBOOST_LOG_SETUP_NO_LIB -DBOOST_PROGRAM_OPTIONS_NO_LIB -DBOOST_RANDOM_NO_LIB -DBOOST_REGEX_NO_LIB -DBOOST_SYSTEM_NO_LIB -DBOOST_THREAD_NO_LIB -DPEP_COMPILED_MIN_LOG_SEVERITY=verbose -DWITH_UNWINDER -I/home/osboxes/core-master/cpp/ext -I/home/osboxes/core-master/cpp -I/home/osboxes/core-master/wasm/cpp -I/home/osboxes/openssl-wasm/precompiled/include -I/home/osboxes/emsdk/upstream/emscripten/cache/sysroot/lib/wasm32-emscripten/libunwind.a -I/home/osboxes/core-master/wasm/cpp/ext/xxhash/src/xxhash -I/home/osboxes/core-master/wasm/cpp/ext/rxcpp/src/rxcpp/Rx/v2/src -I/home/osboxes/core-master/cpp/ext/tz/include -I/home/osboxes/core-master/wasm/cpp/ext/libarchive/src/libarchive/libarchive -I/home/osboxes/core-master/wasm/cpp/ext/mbed/src/mbed_builder/include -I/home/osboxes/core-master/wasm/cpp/ext/prometheus-cpp/install/include -I/home/osboxes/build/protobuf-wasm/build/protobuf/src -isystem /home/osboxes/boost/prefix/include -DBOOST_LOG_USE_NATIVE_SYSLOG -Werror -Wno-error=deprecated-declarations -Wno-unknown-pragmas -Wno-undef -Wno-disabled-macro-expansion -Wno-#pragma-messages -Wconversion -DBUILD_PROJECT_PATH="" -DBUILD_REF="" -DBUILD_REV="" -DBUILD_PIPELINE_ID= -DBUILD_JOB_ID= -DBUILD_TARGET="Emscripten" -g3 -std=gnu++17 -MD -MT cpp/pep/core/CMakeFiles/pepcorelib.dir/TLSMessageProtocol.cpp.o -MF cpp/pep/core/CMakeFiles/pepcorelib.dir/TLSMessageProtocol.cpp.o.d -c /home/osboxes/core-master/cpp/pep/core/TLSMessageProtocol.cpp -o cpp/pep/core/CMakeFiles/pepcorelib.dir/TLSMessageProtocol.cpp.o' failed (returned 1)
+ninja: build stopped: subcommand failed.
+emmake: error: 'ninja pepcli' failed (returned 1)
+```i
+Errors like `no template named 'severity_channel_logger_mt' in namespace 'boost::log::sources'` could maybe be avoided by having build flags to properly select which features to build, remeber that I'm trying to compile this by just deleting the directories pertaining to the unwanted components. But other errors look harder to fix. Like `/home/osboxes/boost/prefix/include/boost/asio/detail/tss_ptr.hpp:29:3: error: Only Windows and POSIX are supported!`
+Giving up now on having a webapp.
