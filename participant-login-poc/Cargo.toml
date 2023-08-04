@@ -6,7 +6,6 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-rocket = "=0.5.0-rc.3"
 irma = "0.2.1"
 tokio = "1.27.0"
 serde_json = "1.0"
@@ -19,4 +18,6 @@ tera = "1"
 simple_logger = "4.2.0" #https://docs.rs/simple_logger/4.2.0/simple_logger/
 rand = "0.8.5"
 sha256 = "1.1.4"
+dioxus = "0.3.2"
+dioxus-desktop = "0.3.0"
 

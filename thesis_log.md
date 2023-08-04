@@ -1575,3 +1575,12 @@ emmake: error: 'ninja pepcli' failed (returned 1)
 ```i
 Errors like `no template named 'severity_channel_logger_mt' in namespace 'boost::log::sources'` could maybe be avoided by having build flags to properly select which features to build, remeber that I'm trying to compile this by just deleting the directories pertaining to the unwanted components. But other errors look harder to fix. Like `/home/osboxes/boost/prefix/include/boost/asio/detail/tss_ptr.hpp:29:3: error: Only Windows and POSIX are supported!`
 Giving up now on having a webapp.
+
+# Light at the end of the tunnel?
+A quick Google search fro a RUST GUI library turned out this: https://dioxuslabs.com/. Would it really make building a cross platform application so 
+easy as they say? If yes, it mean that not everything is lost. Let's see. I'll start with a desktop app anyway and then see how hard would it be to have
+it also as webapp or Android app. On one hand, Dioxus has better web support, but on the other, I'm a big worried of what would happen if I call pepcli
+when it gets compiled to WASM.
+
+Dioxus has a way of rendering external HTML, in the form of a call to `dangerous_inner_html` see [here](https://dioxuslabs.com/docs/0.3/guide/en/describing_ui/special_attributes.html#the-html-escape-hatch).
+Probably passing from one view to aother uses components soemhow. Components are functions rendering stuff.

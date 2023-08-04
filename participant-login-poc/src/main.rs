@@ -1,22 +1,22 @@
 mod http_client;
 mod irma_session_handler;
 
-#[macro_use]
-extern crate rocket;
 
 use std::error::Error;
 use crate::irma_session_handler::IrmaSessionHandler;
 use crate::http_client::HttpClient;
-use rocket::http::Status;
-use rocket::response::stream::TextStream;
-use rocket::response::{content, status};
-use rocket::tokio::time::{sleep, Duration};
-use rocket::State;
 use std::fs;
 use std::ops::Add;
+use dioxus::prelude::{Element, Scope};
 use irma::{SessionStatus, SessionToken};
-use rocket::response::content::RawHtml;
 use tera::Tera;
+
+struct State{
+    config: Config,
+    template_engine: TemplateEngine,
+    irma_session_handler: IrmaSessionHandler,
+    http_client: HttpClient
+}
 
 struct Config {
     server_address: String,
@@ -35,16 +35,6 @@ struct Codes{
 }
 
 
-#[get("/")]
-async fn index() -> status::Custom<content::RawHtml<String>> {
-    let index = fs::read_to_string("static/index.html");
-    status::Custom(
-        Status::Accepted,
-        content::RawHtml(index.expect("Error reading index page")),
-    )
-}
-
-#[get("/disclose")]
 async fn irma_disclose_id(template_engine: &State<TemplateEngine>) -> content::RawHtml<String> {
     let irma_session_handler = IrmaSessionHandler::new("http://localhost:8088");
 
@@ -63,7 +53,7 @@ async fn irma_disclose_id(template_engine: &State<TemplateEngine>) -> content::R
     content::RawHtml(rendered_html)
 }
 
-#[get("/status/<session_id>")]
+
 async fn get_status(session_id: String, irma_session_handler: &State<IrmaSessionHandler>) -> status::Custom<content::RawText<String>>{
     let session_token=SessionToken(session_id);
     let sesion_result =irma_session_handler.get_status(&session_token).await;
@@ -90,7 +80,7 @@ async fn get_status(session_id: String, irma_session_handler: &State<IrmaSession
 
 }
 
-#[get("/success/<session_id>")]
+
 async fn success(session_id: String, irma_session_handler: &State<IrmaSessionHandler>, template_engine: &State<TemplateEngine>, config: &State<Config>, http_client: &State<HttpClient>) -> status::Custom<content::RawHtml<String>> {
     let session_token = SessionToken(session_id);
     let session_result = irma_session_handler.get_status(&session_token).await;
@@ -118,16 +108,34 @@ async fn success(session_id: String, irma_session_handler: &State<IrmaSessionHan
 
 }
 
-#[catch(404)]
-fn not_found() -> RawHtml<String> {
-    let not_found = fs::read_to_string("static/notfound.html");
-    RawHtml(not_found.expect("Error reading 404 page"))
+
+
+
+
+fn app(cx: Scope)  -> Element {
+
+
+
 }
 
+///Sends an HTTP request to PEP's auth server containing the headers with the disclosed attribute
+async fn request_code_for_token(server_address: &str, user_id: &str, spoof_check_secret: &str, uid_field_name: &str, client: &HttpClient) -> Result<Codes, Box<dyn Error>>{
 
+    let auth_response = client
+        .send_auth_request(&String::from(user_id))
+        .await?;
+    let redirect_url= auth_response.response.headers()["location"].to_str()?;
+    let code_verifier= auth_response.code_verifier;
+    let code=redirect_url.split('=').collect::<Vec<&str>>()[1].to_owned();
 
-#[launch]
-fn rocket() -> _ {
+    let result=Codes{
+        code,
+        code_verifier
+    };
+    Ok(result)
+}
+
+fn main() {
     //open and parse config.toml configuration file
     let config =
         fs::read_to_string("config/config.toml").expect("Error reading config/config.toml file");
@@ -175,34 +183,16 @@ fn rocket() -> _ {
 
     simple_logger::SimpleLogger::new().env().init().unwrap();   //logging, see https://docs.rs/simple_logger/4.2.0/simple_logger/
 
-    rocket::build()
-        .mount("/", routes![index, irma_disclose_id, get_status, success])
-        .register("/", catchers![not_found])
-        .manage(Config {
-            server_address: String::from(auth_server_address),
-            user_id: String::from(uid_field_name),
-            spoof_check_secret: spoof_check_secret,
-            uid_field_name: String::from(uid_field_name)
-        })
-        .manage(TemplateEngine{tera})
-        .manage(irma_session_handler)
-        .manage(http_client)
-}
-
-///Sends an HTTP request to PEP's auth server containing the headers with the disclosed attribute
-async fn request_code_for_token(server_address: &str, user_id: &str, spoof_check_secret: &str, uid_field_name: &str, client: &HttpClient) -> Result<Codes, Box<dyn Error>>{
-
-    let auth_response = client
-        .send_auth_request(&String::from(user_id))
-        .await?;
-    let redirect_url= auth_response.response.headers()["location"].to_str()?;
-    let code_verifier= auth_response.code_verifier;
-    let code=redirect_url.split('=').collect::<Vec<&str>>()[1].to_owned();
-
-    let result=Codes{
-        code,
-        code_verifier
+    let config=Config {
+        server_address: String::from(auth_server_address),
+        user_id: String::from(uid_field_name),
+        spoof_check_secret: spoof_check_secret,
+        uid_field_name: String::from(uid_field_name)
     };
-    Ok(result)
+    let state=State {
+        config: config,
+        template_engine: TemplateEngine{tera},
+        irma_session_handler: irma_session_handler,
+        http_client: http_client
+    };
 }
-
