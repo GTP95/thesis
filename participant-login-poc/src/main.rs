@@ -35,7 +35,7 @@ struct Codes{
 }
 
 
-async fn irma_disclose_id(template_engine: &State<TemplateEngine>) -> content::RawHtml<String> {
+async fn irma_disclose_id(template_engine: TemplateEngine) ->  String {
     let irma_session_handler = IrmaSessionHandler::new("http://localhost:8088");
 
 
@@ -49,12 +49,11 @@ async fn irma_disclose_id(template_engine: &State<TemplateEngine>) -> content::R
     let mut context = tera::Context::new();
     context.insert("qr", &qr);
     context.insert("session_id", &request_result.session.token.0);
-    let rendered_html = template_engine.tera.render("disclose.html", &context).unwrap();
-    content::RawHtml(rendered_html)
+   template_engine.tera.render("disclose.html", &context).unwrap()
 }
 
 
-async fn get_status(session_id: String, irma_session_handler: &State<IrmaSessionHandler>) -> status::Custom<content::RawText<String>>{
+async fn get_status(session_id: String, irma_session_handler: IrmaSessionHandler) -> String {
     let session_token=SessionToken(session_id);
     let sesion_result =irma_session_handler.get_status(&session_token).await;
 
@@ -62,26 +61,25 @@ async fn get_status(session_id: String, irma_session_handler: &State<IrmaSession
         Ok(session_result) => {
 
             match  session_result.status {
-                SessionStatus::Initialized => {status::Custom(Status::Accepted, content::RawText(String::from("Initialized")))}
-                SessionStatus::Pairing => {status::Custom(Status::Accepted, content::RawText(String::from("Pairing")))}
-                SessionStatus::Connected => {status::Custom(Status::Accepted, content::RawText(String::from("Connected")))}
-                SessionStatus::Cancelled => {status::Custom(Status::Accepted, content::RawText(String::from("Cancelled")))}
-                SessionStatus::Done => {status::Custom(Status::Accepted, content::RawText(String::from("Done")))}
-                SessionStatus::Timeout => {status::Custom(Status::Accepted, content::RawText(String::from("Timeout")))}
+                SessionStatus::Initialized => String::from("Initialized"),
+                SessionStatus::Pairing => String::from("Pairing"),
+                SessionStatus::Connected => String::from("Connected"),
+                SessionStatus::Cancelled => String::from("Cancelled"),
+                SessionStatus::Done => String::from("Done"),
+                SessionStatus::Timeout => String::from("Timeout")
             }
         }
 
 
         Err(error) => {
-            let error=error.to_string();
-            status::Custom(Status::InternalServerError, content::RawText(error))
+            error.to_string()
         }
     }
 
 }
 
 
-async fn success(session_id: String, irma_session_handler: &State<IrmaSessionHandler>, template_engine: &State<TemplateEngine>, config: &State<Config>, http_client: &State<HttpClient>) -> status::Custom<content::RawHtml<String>> {
+async fn success(session_id: String, irma_session_handler: IrmaSessionHandler, template_engine: TemplateEngine, config: Config, http_client: HttpClient) -> String {
     let session_token = SessionToken(session_id);
     let session_result = irma_session_handler.get_status(&session_token).await;
     let disclosed_attribute=session_result.unwrap().disclosed[0][0].clone().raw_value.unwrap(); //TODO: see if this expression can be simplified
@@ -95,12 +93,12 @@ async fn success(session_id: String, irma_session_handler: &State<IrmaSessionHan
             context.insert("auth_server_base_url", &config.server_address);
             context.insert("code_verifier", &codes.code_verifier);
             let rendered_html = template_engine.tera.render("success.html", &context).unwrap();
-            status::Custom(Status::Accepted, content::RawHtml(rendered_html))
+            return rendered_html;
         }
         Err(error)=>{
             context.insert("error_message", &error.to_string());
             let rendered_html = template_engine.tera.render("error.html", &context).unwrap();
-            status::Custom(Status::InternalServerError, content::RawHtml(rendered_html))
+            return rendered_html;
         }
     }
 
