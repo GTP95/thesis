@@ -10,7 +10,7 @@
 <BODY>
 <H1>YIVI LOGIN</H1>
 <p>Scan the QR code with your YIVI app</p>
-{{qr}}
+{{Qr}}
 <!-- repeat here the session ID for convenience, hidden for aesthetic reasons. It's the same as the one in the QR code so no security issue here -->
 <p hidden id="session_id">{{session_id}}</p>
 
@@ -22,10 +22,10 @@
             $.ajax({
                 url: "/status/"+session_id,
                 type: "GET",
-                success: function (result) {
+                Success: function (result) {
                     if (result === "Done") {
                         clearInterval(interval);
-                        window.location.href = "/success/"+session_id;
+                        window.location.href = "/Success/"+session_id;
                     }
                 }
             });
