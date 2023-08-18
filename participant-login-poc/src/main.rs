@@ -149,7 +149,7 @@ fn App(cx: Scope<'_>) -> Element<'_> {
     let irma_session_handler = IrmaSessionHandler::new(irma_server_address);
     let http_client = http_client::HttpClient::new(auth_server_address.parse().unwrap(), uid_field_name.parse().unwrap(), spoof_check_secret.parse().unwrap(), path_to_root_ca_certificate.parse().unwrap());
 
-    simple_logger::init().unwrap();   //logging, see https://docs.rs/simple_logger/4.2.0/simple_logger/
+    //simple_logger::init_with_env().unwrap_or_else(simple_logger::init_with_level(log::Level::Warn).unwrap());   //logging, see https://docs.rs/simple_logger/4.2.0/simple_logger/
 
     let config = Config {
         server_address: String::from(auth_server_address),
