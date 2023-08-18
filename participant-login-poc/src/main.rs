@@ -15,7 +15,7 @@ enum CurrentStatus { StartUp, Qr, Success, Error }
 
 struct State {
     config: Config,
-    template_engine: TemplateEngine,
+    template_engine: Tera,
     irma_session_handler: IrmaSessionHandler,
     http_client: HttpClient,
     current_status: CurrentStatus,
@@ -28,9 +28,7 @@ struct Config {
     uid_field_name: String,
 }
 
-struct TemplateEngine {
-    tera: Tera,
-}
+
 
 struct Codes {
     code: String,
@@ -38,7 +36,7 @@ struct Codes {
 }
 
 
-async fn irma_disclose_id(template_engine: &TemplateEngine) -> String {
+async fn irma_disclose_id(template_engine: &Tera) -> String {
     let irma_session_handler = IrmaSessionHandler::new("http://localhost:8088");    //TODO: get from global shared state
 
 
@@ -52,7 +50,7 @@ async fn irma_disclose_id(template_engine: &TemplateEngine) -> String {
     let mut context = tera::Context::new();
     context.insert("Qr", &qr);
     context.insert("session_id", &request_result.session.token.0);
-    template_engine.tera.render("disclose.html", &context).unwrap()
+    template_engine.render("disclose.html", &context).unwrap()
 }
 
 
@@ -79,7 +77,7 @@ async fn get_status(session_id: String, irma_session_handler: IrmaSessionHandler
 }
 
 
-async fn success(session_id: String, irma_session_handler: IrmaSessionHandler, template_engine: TemplateEngine, config: Config, http_client: HttpClient) -> String {
+async fn success(session_id: String, irma_session_handler: IrmaSessionHandler, template_engine: Tera, config: Config, http_client: HttpClient) -> String {
     let session_token = SessionToken(session_id);
     let session_result = irma_session_handler.get_status(&session_token).await;
     let disclosed_attribute = session_result.unwrap().disclosed[0][0].clone().raw_value.unwrap(); //TODO: see if this expression can be simplified
@@ -92,19 +90,20 @@ async fn success(session_id: String, irma_session_handler: IrmaSessionHandler, t
             context.insert("code_for_token", &codes.code);
             context.insert("auth_server_base_url", &config.server_address);
             context.insert("code_verifier", &codes.code_verifier);
-            let rendered_html = template_engine.tera.render("Success.html", &context).unwrap();
+            let rendered_html = template_engine.render("Success.html", &context).unwrap();
             rendered_html
         }
         Err(error) => {
             context.insert("error_message", &error.to_string());
-            let rendered_html = template_engine.tera.render("error.html", &context).unwrap();
+            let rendered_html = template_engine.render("error.html", &context).unwrap();
             rendered_html
         }
     };
 }
 
 
-fn app(cx: Scope<'_>) -> Element<'_> {
+#[allow(non_snake_case)] //PascalCase isn't just a convention in Dioxus
+fn App(cx: Scope<'_>) -> Element<'_> {
     //open and parse config.toml configuration file
     let config =
         fs::read_to_string("config/config.toml").expect("Error reading config/config.toml file");
@@ -150,7 +149,7 @@ fn app(cx: Scope<'_>) -> Element<'_> {
     let irma_session_handler = IrmaSessionHandler::new(irma_server_address);
     let http_client = http_client::HttpClient::new(auth_server_address.parse().unwrap(), uid_field_name.parse().unwrap(), spoof_check_secret.parse().unwrap(), path_to_root_ca_certificate.parse().unwrap());
 
-    simple_logger::SimpleLogger::new().env().init().unwrap();   //logging, see https://docs.rs/simple_logger/4.2.0/simple_logger/
+    simple_logger::init().unwrap();   //logging, see https://docs.rs/simple_logger/4.2.0/simple_logger/
 
     let config = Config {
         server_address: String::from(auth_server_address),
@@ -160,7 +159,7 @@ fn app(cx: Scope<'_>) -> Element<'_> {
     };
     let status = State {
         config: config,
-        template_engine: TemplateEngine { tera },
+        template_engine:  tera,
         irma_session_handler: irma_session_handler,
         http_client: http_client,
         current_status: CurrentStatus::StartUp,
@@ -172,28 +171,30 @@ fn app(cx: Scope<'_>) -> Element<'_> {
 
     match status.current_status {
         CurrentStatus::StartUp => {
-            render!{startup(cx)}
+            render!{Startup{ }}
         }
         CurrentStatus::Qr => {
-            render!{qr(cx)}
+            render!{Qr{ }}
         }
         CurrentStatus::Success => { cx.render(rsx!("Logged in")) }
         CurrentStatus::Error => { cx.render(rsx!("Error")) }
     }
 }
 
-pub fn startup(cx: Scope) -> Element{
+#[allow(non_snake_case)] //PascalCase isn't just a convention in Dioxus
+pub fn Startup(cx: Scope) -> Element{
     let status=use_shared_state::<State>(cx).unwrap();
     cx.render(rsx!(button{
                 onclick: move |event| status.write().current_status=CurrentStatus::Qr,
                 "Login with Yivi app"
             }))
 }
-pub fn qr(cx: Scope) -> Element {
+#[allow(non_snake_case)] //PascalCase isn't just a convention in Dioxus
+pub fn Qr(cx: Scope) -> Element {
     let status=use_shared_state::<State>(cx).unwrap();
     let contents = use_future(
         cx, (),
-        {to_owned![status]; move |_| async move { irma_disclose_id(&status.read().template_engine).await} }
+        {to_owned![status]; move |_| async move { irma_disclose_id(&status.read().template_engine.clone()).await} }
 
     ).value().unwrap();
     cx.render(rsx! {
@@ -220,5 +221,5 @@ async fn request_code_for_token(server_address: &str, user_id: &str, spoof_check
 }
 
 fn main() {
-    dioxus_desktop::launch(app);
+    dioxus_desktop::launch(App);
 }
