@@ -14,20 +14,21 @@ pub(crate) struct RequestResult {
 }
 
 impl IrmaSessionHandler {
-    pub fn new(url: &str) -> IrmaSessionHandler {
-        IrmaSessionHandler {
-            client: IrmaClient::new(url).unwrap(),
-        }
+    pub fn new(url: &str) -> Result<IrmaSessionHandler, Error> {
+        let session_handler=IrmaSessionHandler {
+            client: IrmaClient::new(url)?
+        };
+
+        Ok(session_handler)
     }
 
-    pub async fn disclose_id(&self, credential: String) -> RequestResult {
+    pub async fn disclose_id(&self, credential: String) -> Result<RequestResult, Error> {
         let disclosure_request = self.build_disclosure_request(credential);
 
         let session = self
             .client
             .request(&disclosure_request)
-            .await
-            .expect("Failed to start session");
+            .await?;
 
         // Encode the session pointer
         let sessionptr = serde_json::to_string(&session.session_ptr).unwrap();
@@ -38,7 +39,8 @@ impl IrmaSessionHandler {
             session: session,
             client: self.client.clone(),
         };
-        return result;
+
+        Ok(result)
     }
 
     /// Queries the server for the session's status. Returns a SessionResult object containing the status

@@ -16,7 +16,7 @@ enum CurrentStatus { StartUp, Qr, Success, Error }
 struct State {
     config: Config,
     template_engine: Tera,
-    irma_session_handler: IrmaSessionHandler,
+    irma_session_handler: Result<IrmaSessionHandler, irma::Error>,
     http_client: HttpClient,
     current_status: CurrentStatus,
 }
@@ -36,13 +36,13 @@ struct Codes {
 }
 
 
-async fn irma_disclose_id(template_engine: &Tera) -> String {
-    let irma_session_handler = IrmaSessionHandler::new("http://localhost:8088");    //TODO: get from global shared state
+async fn irma_disclose_id(template_engine: &Tera) -> Result<String, irma::Error> {
+    let irma_session_handler = IrmaSessionHandler::new("http://localhost:8088")?;    //TODO: get from global shared state
 
 
     let request_result = irma_session_handler
         .disclose_id(String::from("irma-demo.PEP.id.id"))
-        .await;
+        .await?;
 
     let qr = request_result.qr;
 
@@ -50,7 +50,7 @@ async fn irma_disclose_id(template_engine: &Tera) -> String {
     let mut context = tera::Context::new();
     context.insert("Qr", &qr);
     context.insert("session_id", &request_result.session.token.0);
-    template_engine.render("disclose.html", &context).unwrap()
+    Ok(template_engine.render("disclose.html", &context).unwrap())
 }
 
 
@@ -197,11 +197,16 @@ pub fn Qr(cx: Scope) -> Element {
         {to_owned![status]; move |_| async move { irma_disclose_id(&status.read().template_engine).await} }
 
     ).value().unwrap();
-    cx.render(rsx! {
+
+    match contents {
+        Ok(html) => {cx.render(rsx! {
     div {
-        dangerous_inner_html: "{contents}"
+        dangerous_inner_html: "{html}"
     }
-})
+})}
+        Err(error) => {cx.render(rsx!("Error, can't connect to IRMA server. Please try again later. If you would like to report this error, please include the following information: {error.to_string()}"))}
+    }
+
 }
 
 ///Sends an HTTP request to PEP's auth server containing the headers with the disclosed attribute
