@@ -11,12 +11,13 @@ use dioxus::prelude::*;
 use irma::{SessionStatus, SessionToken};
 use tera::Tera;
 
+
 enum CurrentStatus { StartUp, Qr, Success, Error }
 
 struct State {
     config: Config,
     template_engine: Tera,
-    irma_session_handler: Result<IrmaSessionHandler, irma::Error>,
+    irma_session_handler: IrmaSessionHandler,
     http_client: HttpClient,
     current_status: CurrentStatus,
 }
@@ -36,10 +37,7 @@ struct Codes {
 }
 
 
-async fn irma_disclose_id(template_engine: &Tera) -> Result<String, irma::Error> {
-    let irma_session_handler = IrmaSessionHandler::new("http://localhost:8088")?;    //TODO: get from global shared state
-
-
+async fn irma_disclose_id(template_engine: &Tera, irma_session_handler: &IrmaSessionHandler) -> Result<String, irma::Error> {
     let request_result = irma_session_handler
         .disclose_id(String::from("irma-demo.PEP.id.id"))
         .await?;
@@ -123,12 +121,12 @@ fn App(cx: Scope<'_>) -> Element<'_> {
     let auth_server_address = config["auth_server_address"]
         .as_str()
         .expect("Error parsing auth_server_address from config/config.toml");
-    let uid_field_name = config["uid_field_name"]
-        .as_str()
-        .expect("Error parsing uid_field_name from config/config.toml");
     let irma_server_address = config["irma_server_address"]
         .as_str()
         .expect("Error parsing irma_server_address from config/config.toml");
+    let log_level=config["log_level"]
+        .as_str()
+        .expect("Error parsing log_level from config/config.toml");
 
     //get spoof_check_secret from path_to_spoof_check_secret_file
     let spoof_check_secret = fs::read_to_string(path_to_spoof_check_secret_file)
@@ -149,7 +147,6 @@ fn App(cx: Scope<'_>) -> Element<'_> {
     let irma_session_handler = IrmaSessionHandler::new(irma_server_address);
     let http_client = http_client::HttpClient::new(auth_server_address.parse().unwrap(), uid_field_name.parse().unwrap(), spoof_check_secret.parse().unwrap(), path_to_root_ca_certificate.parse().unwrap());
 
-    //simple_logger::init_with_env().unwrap_or_else(simple_logger::init_with_level(log::Level::Warn).unwrap());   //logging, see https://docs.rs/simple_logger/4.2.0/simple_logger/
 
     let config = Config {
         server_address: String::from(auth_server_address),
@@ -157,28 +154,40 @@ fn App(cx: Scope<'_>) -> Element<'_> {
         spoof_check_secret: spoof_check_secret,
         uid_field_name: String::from(uid_field_name),
     };
-    let status = State {
-        config: config,
-        template_engine:  tera,
-        irma_session_handler: irma_session_handler,
-        http_client: http_client,
-        current_status: CurrentStatus::StartUp,
-    };
 
-    use_shared_state_provider(cx, || status);
+    match irma_session_handler {
+        Ok(irma_session_handler) => {   //If I can create the IRMA session handler, the application works as expected
+            let status = State {
+                config: config,
+                template_engine:  tera,
+                irma_session_handler: irma_session_handler,
+                http_client: http_client,
+                current_status: CurrentStatus::StartUp,
+            };
 
-    let status=use_shared_state::<State>(cx).unwrap().read();  //Get a new reference since I lost ownership by calling use_shared_state_provider
+            use_shared_state_provider(cx, || status);
 
-    match status.current_status {
-        CurrentStatus::StartUp => {
-            render!{Startup{ }}
+            let status=use_shared_state::<State>(cx).unwrap().read();  //Get a new reference since I lost ownership by calling use_shared_state_provider
+
+            match status.current_status {
+                CurrentStatus::StartUp => {
+                    render!{Startup{ }}
+                }
+                CurrentStatus::Qr => {
+                    render!{Qr{ }}
+                }
+                CurrentStatus::Success => { cx.render(rsx!("Logged in")) }
+                CurrentStatus::Error => { cx.render(rsx!("Error")) }
+            }
+
         }
-        CurrentStatus::Qr => {
-            render!{Qr{ }}
+        Err(error) => { //If I can't create the IRMA session handler, the application can't work as expected
+            cx.render(rsx!("Error, can't connect to IRMA server. Please try again later. If you would like to report this error, please include the following information: {error.to_string()}"))
         }
-        CurrentStatus::Success => { cx.render(rsx!("Logged in")) }
-        CurrentStatus::Error => { cx.render(rsx!("Error")) }
     }
+
+
+
 }
 
 #[allow(non_snake_case)] //PascalCase isn't just a convention in Dioxus
@@ -194,16 +203,19 @@ pub fn Qr(cx: Scope) -> Element {
     let status=use_shared_state::<State>(cx).unwrap();
     let contents = use_future(
         cx, (),
-        {to_owned![status]; move |_| async move { irma_disclose_id(&status.read().template_engine).await} }
+        {to_owned![status]; move |_| async move { irma_disclose_id(&status.read().template_engine, &status.read().irma_session_handler).await} }
 
     ).value().unwrap();
 
     match contents {
-        Ok(html) => {cx.render(rsx! {
+        Ok(html) => {
+            cx.render(rsx! {
     div {
         dangerous_inner_html: "{html}"
     }
-})}
+})
+
+        }
         Err(error) => {cx.render(rsx!("Error, can't connect to IRMA server. Please try again later. If you would like to report this error, please include the following information: {error.to_string()}"))}
     }
 
