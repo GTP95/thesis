@@ -124,9 +124,7 @@ fn App(cx: Scope<'_>) -> Element<'_> {
     let irma_server_address = config["irma_server_address"]
         .as_str()
         .expect("Error parsing irma_server_address from config/config.toml");
-    let log_level=config["log_level"]
-        .as_str()
-        .expect("Error parsing log_level from config/config.toml");
+    
 
     //get spoof_check_secret from path_to_spoof_check_secret_file
     let spoof_check_secret = fs::read_to_string(path_to_spoof_check_secret_file)
