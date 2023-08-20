@@ -194,7 +194,7 @@ pub fn Qr(cx: Scope) -> Element {
     let status=use_shared_state::<State>(cx).unwrap();
     let contents = use_future(
         cx, (),
-        {to_owned![status]; move |_| async move { irma_disclose_id(&status.read().template_engine.clone()).await} }
+        {to_owned![status]; move |_| async move { irma_disclose_id(&status.read().template_engine).await} }
 
     ).value().unwrap();
     cx.render(rsx! {
