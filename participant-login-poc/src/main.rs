@@ -3,10 +3,10 @@ mod irma_session_handler;
 
 
 use std::error::Error;
-use crate::irma_session_handler::IrmaSessionHandler;
+use crate::irma_session_handler::{IrmaSessionHandler, RequestResult};
 use crate::http_client::HttpClient;
 use std::fs;
-use dioxus::html::input;
+use dioxus::html::{div, input, p};
 use dioxus::prelude::*;
 use irma::{SessionStatus, SessionToken};
 use tera::Tera;
@@ -30,33 +30,32 @@ struct Config {
 }
 
 
-
 struct Codes {
     code: String,
     code_verifier: [u8; 32],
 }
 
 
-async fn irma_disclose_id(template_engine: &Tera, irma_session_handler: &IrmaSessionHandler) -> Result<String, irma::Error> {
+async fn irma_disclose_id(template_engine: &Tera, irma_session_handler: &IrmaSessionHandler) -> Result<RequestResult, irma::Error> {
     let request_result = irma_session_handler
         .disclose_id(String::from("irma-demo.PEP.id.id"))
         .await?;
 
-    let qr = request_result.qr;
-
-    //render Tera template showing the Qr code
-    let mut context = tera::Context::new();
-    context.insert("Qr", &qr);
-    context.insert("session_id", &request_result.session.token.0);
-    Ok(template_engine.render("disclose.html", &context).unwrap())
+    Ok(request_result)
 }
 
 
-async fn get_status(session_id: String, irma_session_handler: IrmaSessionHandler) -> String {
-    let session_token = SessionToken(session_id);
-    let sesion_result = irma_session_handler.get_status(&session_token).await;
+/**
+ * Gets the status of the IRMA session with the given session ID
+ * # Arguments
+ * * `session_id` - The session ID to get the status of
+ * * `irma_session_handler` - The IRMA session handler to use to get the status
+ */
+async fn get_status(session_id: String, irma_session_handler: &IrmaSessionHandler) -> String {
+    let session_token = SessionToken(session_id.to_string());
+    let session_result = irma_session_handler.get_status(&session_token).await;
 
-    match sesion_result {
+    match session_result {
         Ok(session_result) => {
             match session_result.status {
                 SessionStatus::Initialized => String::from("Initialized"),
@@ -124,7 +123,7 @@ fn App(cx: Scope<'_>) -> Element<'_> {
     let irma_server_address = config["irma_server_address"]
         .as_str()
         .expect("Error parsing irma_server_address from config/config.toml");
-    
+
 
     //get spoof_check_secret from path_to_spoof_check_secret_file
     let spoof_check_secret = fs::read_to_string(path_to_spoof_check_secret_file)
@@ -157,7 +156,7 @@ fn App(cx: Scope<'_>) -> Element<'_> {
         Ok(irma_session_handler) => {   //If I can create the IRMA session handler, the application works as expected
             let status = State {
                 config: config,
-                template_engine:  tera,
+                template_engine: tera,
                 irma_session_handler: irma_session_handler,
                 http_client: http_client,
                 current_status: CurrentStatus::StartUp,
@@ -165,58 +164,83 @@ fn App(cx: Scope<'_>) -> Element<'_> {
 
             use_shared_state_provider(cx, || status);
 
-            let status=use_shared_state::<State>(cx).unwrap().read();  //Get a new reference since I lost ownership by calling use_shared_state_provider
+            let status = use_shared_state::<State>(cx).unwrap().read();  //Get a new reference since I lost ownership by calling use_shared_state_provider
 
             match status.current_status {
                 CurrentStatus::StartUp => {
-                    render!{Startup{ }}
+                    render! {Startup{ }}
                 }
                 CurrentStatus::Qr => {
-                    render!{Qr{ }}
+                    render! {Qr{ }}
                 }
                 CurrentStatus::Success => { cx.render(rsx!("Logged in")) }
                 CurrentStatus::Error => { cx.render(rsx!("Error")) }
             }
-
         }
-        Err(error) => { //If I can't create the IRMA session handler, the application can't work as expected
-            cx.render(rsx!("Error, can't connect to IRMA server. Please try again later. If you would like to report this error, please include the following information: {error.to_string()}"))
+        Err(error) => { //If I can't create the IRMA session handler, the application can't work as expected. TODO: somehow this doesn't work and the error is reported only later, after clicking on the button
+            let status = use_shared_state::<State>(cx).unwrap();
+            status.write().current_status = CurrentStatus::Error;
+            render! {error.to_string()}
         }
     }
-
-
-
 }
 
 #[allow(non_snake_case)] //PascalCase isn't just a convention in Dioxus
-pub fn Startup(cx: Scope) -> Element{
-    let status=use_shared_state::<State>(cx).unwrap();
+pub fn Startup(cx: Scope) -> Element {
+    let status = use_shared_state::<State>(cx).unwrap();
     cx.render(rsx!(button{
                 onclick: move |event| status.write().current_status=CurrentStatus::Qr,
                 "Login with Yivi app"
             }))
 }
+
 #[allow(non_snake_case)] //PascalCase isn't just a convention in Dioxus
 pub fn Qr(cx: Scope) -> Element {
-    let status=use_shared_state::<State>(cx).unwrap();
+    let status = use_shared_state::<State>(cx).unwrap();
     let contents = use_future(
         cx, (),
-        {to_owned![status]; move |_| async move { irma_disclose_id(&status.read().template_engine, &status.read().irma_session_handler).await} }
-
-    ).value().unwrap();
+        {
+            to_owned![status];
+            move |_| async move { irma_disclose_id(&status.read().template_engine, &status.read().irma_session_handler).await }
+        },
+    ).value();
 
     match contents {
-        Ok(html) => {
-            cx.render(rsx! {
-    div {
-        dangerous_inner_html: "{html}"
-    }
-})
+        Some(Ok(request_result)) => {
+            let qr = &request_result.qr;
+            let session_id = &request_result.session.token.0;
+            let session_id = String::from(session_id);
 
+            let mut context = tera::Context::new();
+            context.insert("Qr", qr);
+            let html = status.read().template_engine.render("disclose.html", &context).unwrap();
+
+            let irma_session_result = use_future(
+                cx, (),
+                {
+                    to_owned![status];
+                    move |_| async move { get_status(session_id, &status.read().irma_session_handler).await }
+                },
+            ).value();
+            cx.render(
+                match irma_session_result {
+                    None => {
+                        rsx!(div{
+                        dangerous_inner_html: "{html}"
+                    })
+                    }
+                    Some(session_status) => {
+                        rsx!(div{
+                        dangerous_inner_html: "{html}",
+                        p{ "Session status: {session_status}"}
+                    })
+                    }
+                }
+            )
         }
-        Err(error) => {cx.render(rsx!("Error, can't connect to IRMA server. Please try again later. If you would like to report this error, please include the following information: {error.to_string()}"))}
+        Some(Err(error)) => { cx.render(rsx!("Error, can't connect to IRMA server. Please try again later. If you would like to report this error, please include the following information: {error.to_string()}")) }
+        None => { cx.render(rsx!("Loading...")) }
     }
-
 }
 
 ///Sends an HTTP request to PEP's auth server containing the headers with the disclosed attribute
