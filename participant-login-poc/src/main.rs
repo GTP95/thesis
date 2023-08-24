@@ -8,11 +8,12 @@ use crate::http_client::HttpClient;
 use std::fs;
 use dioxus::html::{div, input, p};
 use dioxus::prelude::*;
-use irma::{SessionStatus, SessionToken};
+use irma::{SessionResult, SessionStatus, SessionToken};
 use tera::Tera;
+use std::{thread, time};
 
 
-enum CurrentStatus { StartUp, Qr, Success, Error }
+enum CurrentStatus { StartUp, Disclose, Success, Error }
 
 struct State {
     config: Config,
@@ -51,26 +52,10 @@ async fn irma_disclose_id(template_engine: &Tera, irma_session_handler: &IrmaSes
  * * `session_id` - The session ID to get the status of
  * * `irma_session_handler` - The IRMA session handler to use to get the status
  */
-async fn get_status(session_id: String, irma_session_handler: &IrmaSessionHandler) -> String {
+async fn get_status(session_id: &String, irma_session_handler: &IrmaSessionHandler) -> Result<SessionResult, irma::Error> {
+    println!("Called get_status with session_id: {}", session_id);
     let session_token = SessionToken(session_id.to_string());
-    let session_result = irma_session_handler.get_status(&session_token).await;
-
-    match session_result {
-        Ok(session_result) => {
-            match session_result.status {
-                SessionStatus::Initialized => String::from("Initialized"),
-                SessionStatus::Pairing => String::from("Pairing"),
-                SessionStatus::Connected => String::from("Connected"),
-                SessionStatus::Cancelled => String::from("Cancelled"),
-                SessionStatus::Done => String::from("Done"),
-                SessionStatus::Timeout => String::from("Timeout")
-            }
-        }
-
-        Err(error) => {
-            error.to_string()
-        }
-    }
+    irma_session_handler.get_status(&session_token).await
 }
 
 
@@ -99,7 +84,7 @@ async fn success(session_id: String, irma_session_handler: IrmaSessionHandler, t
 }
 
 
-#[allow(non_snake_case)] //PascalCase isn't just a convention in Dioxus
+#[allow(non_snake_case)] //UpperCamelCase isn't just a convention in Dioxus
 fn App(cx: Scope<'_>) -> Element<'_> {
     //open and parse config.toml configuration file
     let config =
@@ -170,8 +155,8 @@ fn App(cx: Scope<'_>) -> Element<'_> {
                 CurrentStatus::StartUp => {
                     render! {Startup{ }}
                 }
-                CurrentStatus::Qr => {
-                    render! {Qr{ }}
+                CurrentStatus::Disclose => {
+                    render! {Disclose{}}
                 }
                 CurrentStatus::Success => { cx.render(rsx!("Logged in")) }
                 CurrentStatus::Error => { cx.render(rsx!("Error")) }
@@ -185,19 +170,19 @@ fn App(cx: Scope<'_>) -> Element<'_> {
     }
 }
 
-#[allow(non_snake_case)] //PascalCase isn't just a convention in Dioxus
+#[allow(non_snake_case)] //UpperCamelCase isn't just a convention in Dioxus
 pub fn Startup(cx: Scope) -> Element {
     let status = use_shared_state::<State>(cx).unwrap();
     cx.render(rsx!(button{
-                onclick: move |event| status.write().current_status=CurrentStatus::Qr,
+                onclick: move |event| status.write().current_status=CurrentStatus::Disclose,
                 "Login with Yivi app"
             }))
 }
+#[allow(non_snake_case)] //UpperCamelCase isn't just a convention in Dioxus
+pub fn Disclose(cx: Scope) ->Element{
 
-#[allow(non_snake_case)] //PascalCase isn't just a convention in Dioxus
-pub fn Qr(cx: Scope) -> Element {
     let status = use_shared_state::<State>(cx).unwrap();
-    let contents = use_future(
+    let qr_and_session_id = use_future(
         cx, (),
         {
             to_owned![status];
@@ -205,42 +190,97 @@ pub fn Qr(cx: Scope) -> Element {
         },
     ).value();
 
-    match contents {
-        Some(Ok(request_result)) => {
-            let qr = &request_result.qr;
-            let session_id = &request_result.session.token.0;
-            let session_id = String::from(session_id);
+    match qr_and_session_id {
+        None => {
+            cx.render(rsx!(div{"Waiting for the IRMA server to respond..."}))
+        }
+        Some(Ok(qr_and_session_id)) => {
+            let session_id = &qr_and_session_id.session.token.0;
+            let qr_code = qr_and_session_id.qr.clone();
+            //status.write().current_status=CurrentStatus::Disclose;   //Go to next step
+            cx.render(rsx!{
+                Qr{qr: qr_code},
+                IrmaSessionStatus{session_id: session_id.to_string()},
+            })
+        }
+        Some(Err(error)) => {
+            cx.render(rsx!(div{"Error, can't connect to IRMA server. Please try again later. If you would like to report this error, please include the following information: {error.to_string()}"}))
+        }
+    }
 
-            let mut context = tera::Context::new();
-            context.insert("Qr", qr);
-            let html = status.read().template_engine.render("disclose.html", &context).unwrap();
+}
 
-            let irma_session_result = use_future(
-                cx, (),
-                {
-                    to_owned![status];
-                    move |_| async move { get_status(session_id, &status.read().irma_session_handler).await }
-                },
-            ).value();
-            cx.render(
-                match irma_session_result {
-                    None => {
-                        rsx!(div{
+#[derive(PartialEq, Props)]
+pub struct IrmaSessionId {
+    session_id: String,
+}
+
+#[derive(PartialEq, Props)]
+pub struct QrCode {
+    qr: String,
+}
+#[allow(non_snake_case)] //UpperCamelCase isn't just a convention in Dioxus
+pub fn IrmaSessionStatus(cx: Scope<IrmaSessionId>)->Element{
+    let status = use_shared_state::<State>(cx).unwrap();
+    let session_id= cx.props.session_id.clone();
+    let future_irma_session_result = use_future(
+        cx, (),
+        {
+            to_owned![status];
+            move |_| async move { get_status(&session_id, &status.read().irma_session_handler).await }
+        },
+    );
+    let irma_session_result = future_irma_session_result.value();   //I need two separate variables, so that I can restart the future later. I restart the future until I have a result to implement polling
+
+    match irma_session_result {
+        None => {
+            cx.render(rsx!(div{"Please scan the QR code with the Yivi app."}))
+        }
+        Some(Ok(session_result)) => {
+            match session_result.status {
+                irma::SessionStatus::Timeout=>{
+                    cx.render(rsx!(div{"Login session timed out, please try again."}))
+                }
+                irma::SessionStatus::Cancelled=>{
+                    cx.render(rsx!(div{"Login session cancelled, please try again."}))
+                }
+                irma::SessionStatus::Done=>{
+                    status.write().current_status=CurrentStatus::Success;   //Go to next step
+                    cx.render(rsx!(div{"Login session done, please wait while we log you in."})) //It's actually lying
+                }
+                _=> {
+                    cx.render(rsx!(div{"Please scan the QR code with the Yivi app."}))
+                }
+            }
+        }
+        Some(Err(error)) => {
+            match error {
+                irma::Error::InvalidUrl(_) => {cx.render(rsx!(div{"Error, can't connect to IRMA server. Please try again later. If you would like to report this error, please include the following information: {error.to_string()}"}) )}
+                irma::Error::NetworkError(_) => {cx.render(rsx!(div{"Error, can't connect to IRMA server. Please try again later. If you would like to report this error, please include the following information: {error.to_string()}"}))}
+                irma::Error::SessionCancelled => {cx.render(rsx!(div{"Login session cancelled, please try again."}))}
+                irma::Error::SessionTimedOut => {cx.render(rsx!(div{"Login session timed out, please try again."}))}
+                irma::Error::SessionNotFinished(_) => {
+                    future_irma_session_result.restart();
+                    cx.render(rsx!(div{"Please scan this QR code with the Yivi app and share your data."}))}
+            }
+        }
+    }
+}
+#[allow(non_snake_case)] //UpperCamelCase isn't just a convention in Dioxus
+pub fn Qr(cx: Scope<QrCode>) -> Element {
+    let status = use_shared_state::<State>(cx).unwrap();
+    let qr =&cx.props.qr;
+
+    let mut context = tera::Context::new();
+    context.insert("Qr", qr);
+    let html = status.read().template_engine.render("disclose.html", &context).unwrap();
+
+
+    cx.render(
+        rsx!(div{
                         dangerous_inner_html: "{html}"
                     })
-                    }
-                    Some(session_status) => {
-                        rsx!(div{
-                        dangerous_inner_html: "{html}",
-                        p{ "Session status: {session_status}"}
-                    })
-                    }
-                }
-            )
-        }
-        Some(Err(error)) => { cx.render(rsx!("Error, can't connect to IRMA server. Please try again later. If you would like to report this error, please include the following information: {error.to_string()}")) }
-        None => { cx.render(rsx!("Loading...")) }
-    }
+    )
 }
 
 ///Sends an HTTP request to PEP's auth server containing the headers with the disclosed attribute
@@ -257,6 +297,12 @@ async fn request_code_for_token(server_address: &str, user_id: &str, spoof_check
         code_verifier,
     };
     Ok(result)
+}
+
+async fn restart_future_with_delay(future: &UseFuture<Result<SessionResult, irma::Error>>, delay_in_milliseconds: u64) -> Option<&Result<SessionResult, irma::Error>> {
+    let delay = time::Duration::from_millis(delay_in_milliseconds);
+    thread::sleep(delay);
+    future.value()
 }
 
 fn main() {
