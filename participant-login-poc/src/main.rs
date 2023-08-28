@@ -55,7 +55,9 @@ async fn irma_disclose_id(template_engine: &Tera, irma_session_handler: &IrmaSes
 async fn get_status(session_id: &String, irma_session_handler: &IrmaSessionHandler) -> Result<SessionResult, irma::Error> {
     println!("Called get_status with session_id: {}", session_id);
     let session_token = SessionToken(session_id.to_string());
-    irma_session_handler.get_status(&session_token).await
+    let result=irma_session_handler.get_status(&session_token).await;
+    println!("get_status is about to return {:?}", result);
+    return result;
 }
 
 
@@ -230,40 +232,54 @@ pub fn IrmaSessionStatus(cx: Scope<IrmaSessionId>)->Element{
             move |_| async move { get_status(&session_id, &status.read().irma_session_handler).await }
         },
     );
-    let irma_session_result = future_irma_session_result.value();   //I need two separate variables, so that I can restart the future later. I restart the future until I have a result to implement polling
+    let irma_session_result = future_irma_session_result.state();   //I need two separate variables, so that I can restart the future later. I restart the future until I have a result to implement polling
 
     match irma_session_result {
-        None => {
+        dioxus::prelude::UseFutureState::Pending => {
+            println!("Pending...");
             cx.render(rsx!(div{"Please scan the QR code with the Yivi app."}))
         }
-        Some(Ok(session_result)) => {
-            match session_result.status {
-                irma::SessionStatus::Timeout=>{
-                    cx.render(rsx!(div{"Login session timed out, please try again."}))
+        dioxus::prelude::UseFutureState::Complete(irma_session_result) => {
+            print!("Complete, ");
+            match irma_session_result {
+                Ok(session_result) => {
+                    match session_result.status {
+                        irma::SessionStatus::Timeout=>{
+                            println!("timeout");
+                            cx.render(rsx!(div{"Login session timed out, please try again."}))
+                        }
+                        irma::SessionStatus::Cancelled=>{
+                            println!("cancelled");
+                            cx.render(rsx!(div{"Login session cancelled, please try again."}))
+                        }
+                        irma::SessionStatus::Done=>{
+                            println!("done");
+                            //status.write().current_status=CurrentStatus::Success;   //Go to next step
+                            cx.render(rsx!(div{"Login session done, please wait while we log you in."})) //It's actually lying
+                        }
+                        _=> {
+                            println!("other status: {:?}", session_result.status);
+                            cx.render(rsx!(div{"Please scan the QR code with the Yivi app."}))
+                        }
+                    }
                 }
-                irma::SessionStatus::Cancelled=>{
-                    cx.render(rsx!(div{"Login session cancelled, please try again."}))
-                }
-                irma::SessionStatus::Done=>{
-                    status.write().current_status=CurrentStatus::Success;   //Go to next step
-                    cx.render(rsx!(div{"Login session done, please wait while we log you in."})) //It's actually lying
-                }
-                _=> {
-                    cx.render(rsx!(div{"Please scan the QR code with the Yivi app."}))
+                Err(error) => {
+                    println!("irma_session_result contains error {:?}", error.to_string());
+                    match error {
+                        irma::Error::InvalidUrl(_) => {cx.render(rsx!(div{"Error, can't connect to IRMA server. Please try again later. If you would like to report this error, please include the following information: {error.to_string()}"}) )}
+                        irma::Error::NetworkError(_) => {cx.render(rsx!(div{"Error, can't connect to IRMA server. Please try again later. If you would like to report this error, please include the following information: {error.to_string()}"}))}
+                        irma::Error::SessionCancelled => {cx.render(rsx!(div{"Login session cancelled, please try again."}))}
+                        irma::Error::SessionTimedOut => {cx.render(rsx!(div{"Login session timed out, please try again."}))}
+                        irma::Error::SessionNotFinished(_) => {
+                            println!("Session not finished, restarting...");
+                            future_irma_session_result.restart();
+                            cx.render(rsx!(div{"Please scan this QR code with the Yivi app and share your data."}))}
+                    }
                 }
             }
+
         }
-        Some(Err(error)) => {
-            match error {
-                irma::Error::InvalidUrl(_) => {cx.render(rsx!(div{"Error, can't connect to IRMA server. Please try again later. If you would like to report this error, please include the following information: {error.to_string()}"}) )}
-                irma::Error::NetworkError(_) => {cx.render(rsx!(div{"Error, can't connect to IRMA server. Please try again later. If you would like to report this error, please include the following information: {error.to_string()}"}))}
-                irma::Error::SessionCancelled => {cx.render(rsx!(div{"Login session cancelled, please try again."}))}
-                irma::Error::SessionTimedOut => {cx.render(rsx!(div{"Login session timed out, please try again."}))}
-                irma::Error::SessionNotFinished(_) => {
-                    future_irma_session_result.restart();
-                    cx.render(rsx!(div{"Please scan this QR code with the Yivi app and share your data."}))}
-            }
-        }
+        dioxus::prelude::UseFutureState::Reloading(_)=> cx.render(rsx!(div{"Waiting for the IRMA login session to complete..."}))
     }
 }
 #[allow(non_snake_case)] //UpperCamelCase isn't just a convention in Dioxus
