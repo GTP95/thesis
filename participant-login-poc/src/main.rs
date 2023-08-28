@@ -6,12 +6,9 @@ use std::error::Error;
 use crate::irma_session_handler::{IrmaSessionHandler, RequestResult};
 use crate::http_client::HttpClient;
 use std::fs;
-use dioxus::html::{div, input, p};
 use dioxus::prelude::*;
 use irma::{SessionResult, SessionStatus, SessionToken};
 use tera::Tera;
-use std::{thread, time};
-
 
 enum CurrentStatus { StartUp, Disclose, Success, Error }
 
@@ -36,56 +33,26 @@ struct Codes {
     code_verifier: [u8; 32],
 }
 
-
-async fn irma_disclose_id(template_engine: &Tera, irma_session_handler: &IrmaSessionHandler) -> Result<RequestResult, irma::Error> {
-    let request_result = irma_session_handler
-        .disclose_id(String::from("irma-demo.PEP.id.id"))
-        .await?;
-
-    Ok(request_result)
+#[derive(PartialEq, Props)]
+pub struct IrmaSessionId {
+    session_id: String,
 }
 
+#[derive(PartialEq, Props)]
+pub struct QrCode {
+    qr: String,
+}
+
+
+fn main() {
+    dioxus_desktop::launch(App);
+}
 
 /**
- * Gets the status of the IRMA session with the given session ID
+ * Dioxus' entry point
  * # Arguments
- * * `session_id` - The session ID to get the status of
- * * `irma_session_handler` - The IRMA session handler to use to get the status
+ * * `cx` - The scope
  */
-async fn get_status(session_id: &String, irma_session_handler: &IrmaSessionHandler) -> Result<SessionResult, irma::Error> {
-    println!("Called get_status with session_id: {}", session_id);
-    let session_token = SessionToken(session_id.to_string());
-    let result=irma_session_handler.get_status(&session_token).await;
-    println!("get_status is about to return {:?}", result);
-    return result;
-}
-
-
-async fn success(session_id: String, irma_session_handler: IrmaSessionHandler, template_engine: Tera, config: Config, http_client: HttpClient) -> String {
-    let session_token = SessionToken(session_id);
-    let session_result = irma_session_handler.get_status(&session_token).await;
-    let disclosed_attribute = session_result.unwrap().disclosed[0][0].clone().raw_value.unwrap(); //TODO: see if this expression can be simplified
-    let request = request_code_for_token(&config.server_address, &disclosed_attribute, &config.spoof_check_secret, &config.uid_field_name, &http_client);
-    let mut context = tera::Context::new();
-    let code_for_token = request.await;
-    return match code_for_token {
-        Ok(codes) => {
-            context.insert("disclosed_attribute", &disclosed_attribute);
-            context.insert("code_for_token", &codes.code);
-            context.insert("auth_server_base_url", &config.server_address);
-            context.insert("code_verifier", &codes.code_verifier);
-            let rendered_html = template_engine.render("Success.html", &context).unwrap();
-            rendered_html
-        }
-        Err(error) => {
-            context.insert("error_message", &error.to_string());
-            let rendered_html = template_engine.render("error.html", &context).unwrap();
-            rendered_html
-        }
-    };
-}
-
-
 #[allow(non_snake_case)] //UpperCamelCase isn't just a convention in Dioxus
 fn App(cx: Scope<'_>) -> Element<'_> {
     //open and parse config.toml configuration file
@@ -172,6 +139,13 @@ fn App(cx: Scope<'_>) -> Element<'_> {
     }
 }
 
+
+
+/**
+ * Dioxus component that displays a button to start the IRMA session
+ * # Arguments
+ * * `cx` - The scope
+ */
 #[allow(non_snake_case)] //UpperCamelCase isn't just a convention in Dioxus
 pub fn Startup(cx: Scope) -> Element {
     let status = use_shared_state::<State>(cx).unwrap();
@@ -180,6 +154,12 @@ pub fn Startup(cx: Scope) -> Element {
                 "Login with Yivi app"
             }))
 }
+
+/**
+ * Dioxus component that starts an IRMA session and displays the QR code containing the IRMA session pointer
+ * # Arguments
+ * * `cx` - The scope
+ */
 #[allow(non_snake_case)] //UpperCamelCase isn't just a convention in Dioxus
 pub fn Disclose(cx: Scope) ->Element{
 
@@ -212,15 +192,14 @@ pub fn Disclose(cx: Scope) ->Element{
 
 }
 
-#[derive(PartialEq, Props)]
-pub struct IrmaSessionId {
-    session_id: String,
-}
 
-#[derive(PartialEq, Props)]
-pub struct QrCode {
-    qr: String,
-}
+/**
+ * Dioxus component that polls and displays the status of the IRMA session with the given session ID.
+ * Once the session is done, it updates the status of the application to Success.
+ * # Arguments
+ * * `cx` - The scope
+ * * `session_id` - The session ID to get the status of
+ */
 #[allow(non_snake_case)] //UpperCamelCase isn't just a convention in Dioxus
 pub fn IrmaSessionStatus(cx: Scope<IrmaSessionId>)->Element{
     let status = use_shared_state::<State>(cx).unwrap();
@@ -282,6 +261,12 @@ pub fn IrmaSessionStatus(cx: Scope<IrmaSessionId>)->Element{
         dioxus::prelude::UseFutureState::Reloading(_)=> cx.render(rsx!(div{"Waiting for the IRMA login session to complete..."}))
     }
 }
+/**
+ * Dioxus component that renders the QR code containing the IRMA session pointer
+ * # Arguments
+ * * `cx` - The scope
+ * * `qr` - The QR code to render
+ */
 #[allow(non_snake_case)] //UpperCamelCase isn't just a convention in Dioxus
 pub fn Qr(cx: Scope<QrCode>) -> Element {
     let status = use_shared_state::<State>(cx).unwrap();
@@ -299,7 +284,73 @@ pub fn Qr(cx: Scope<QrCode>) -> Element {
     )
 }
 
-///Sends an HTTP request to PEP's auth server containing the headers with the disclosed attribute
+/**
+ * Starts an IRMA session to disclose the user's PEP ID
+ * # Arguments
+ * * `template_engine` - The template engine to use to render the QR code
+ * * `irma_session_handler` - The IRMA session handler to use to start the session
+ */
+async fn irma_disclose_id(template_engine: &Tera, irma_session_handler: &IrmaSessionHandler) -> Result<RequestResult, irma::Error> {
+    let request_result = irma_session_handler
+        .disclose_id(String::from("irma-demo.PEP.id.id"))
+        .await?;
+
+    Ok(request_result)
+}
+
+
+/**
+ * Gets the status of the IRMA session with the given session ID
+ * # Arguments
+ * * `session_id` - The session ID to get the status of
+ * * `irma_session_handler` - The IRMA session handler to use to get the status
+ */
+async fn get_status(session_id: &String, irma_session_handler: &IrmaSessionHandler) -> Result<SessionResult, irma::Error> {
+    println!("Called get_status with session_id: {}", session_id);
+    let session_token = SessionToken(session_id.to_string());
+    let result=irma_session_handler.get_status(&session_token).await;
+    println!("get_status is about to return {:?}", result);
+    return result;
+}
+
+
+async fn success(session_id: String, irma_session_handler: IrmaSessionHandler, template_engine: Tera, config: Config, http_client: HttpClient) -> String {
+    let session_token = SessionToken(session_id);
+    let session_result = irma_session_handler.get_status(&session_token).await;
+    let disclosed_attribute = session_result.unwrap().disclosed[0][0].clone().raw_value.unwrap(); //TODO: see if this expression can be simplified
+    let request = request_code_for_token(&config.server_address, &disclosed_attribute, &config.spoof_check_secret, &config.uid_field_name, &http_client);
+    let mut context = tera::Context::new();
+    let code_for_token = request.await;
+    return match code_for_token {
+        Ok(codes) => {
+            context.insert("disclosed_attribute", &disclosed_attribute);
+            context.insert("code_for_token", &codes.code);
+            context.insert("auth_server_base_url", &config.server_address);
+            context.insert("code_verifier", &codes.code_verifier);
+            let rendered_html = template_engine.render("Success.html", &context).unwrap();
+            rendered_html
+        }
+        Err(error) => {
+            context.insert("error_message", &error.to_string());
+            let rendered_html = template_engine.render("error.html", &context).unwrap();
+            rendered_html
+        }
+    };
+}
+
+
+
+
+
+
+/**Sends an HTTP request to PEP's auth server containing the headers with the disclosed attribute
+* # Arguments
+* * `server_address` - The base URL of the PEP auth server
+* * `user_id` - The user ID to send in the HTTP header
+* * `spoof_check_secret` - The secret to use for the Shibboleth spoof check
+* * `uid_field_name` - The name of the HTTP header that contains the user ID
+* * `client` - The HTTP client to use to send the request
+*/
 async fn request_code_for_token(server_address: &str, user_id: &str, spoof_check_secret: &str, uid_field_name: &str, client: &HttpClient) -> Result<Codes, Box<dyn Error>> {
     let auth_response = client
         .send_auth_request(&String::from(user_id))
@@ -315,12 +366,3 @@ async fn request_code_for_token(server_address: &str, user_id: &str, spoof_check
     Ok(result)
 }
 
-async fn restart_future_with_delay(future: &UseFuture<Result<SessionResult, irma::Error>>, delay_in_milliseconds: u64) -> Option<&Result<SessionResult, irma::Error>> {
-    let delay = time::Duration::from_millis(delay_in_milliseconds);
-    thread::sleep(delay);
-    future.value()
-}
-
-fn main() {
-    dioxus_desktop::launch(App);
-}
