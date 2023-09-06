@@ -349,7 +349,7 @@ async fn success(session_id: String, irma_session_handler: IrmaSessionHandler, t
 * * `user_id` - The user ID to send in the HTTP header
 * * `spoof_check_secret` - The secret to use for the Shibboleth spoof check
 * * `uid_field_name` - The name of the HTTP header that contains the user ID
-* * `client` - The HTTP client to use to send the request
+* * `bin` - The HTTP bin to use to send the request
 */
 async fn request_code_for_token(server_address: &str, user_id: &str, spoof_check_secret: &str, uid_field_name: &str, client: &HttpClient) -> Result<Codes, Box<dyn Error>> {
     let auth_response = client

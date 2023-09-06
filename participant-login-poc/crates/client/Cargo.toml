@@ -1,0 +1,22 @@
+[package]
+name = "client"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+irma = "0.2.1"
+tokio = "1.27.0"
+serde_json = "1.0"
+qrcode = "0.12.0"
+image = "0.24.6"
+http = "0.2.9"
+reqwest = "0.11.18"
+toml = "0.7.4"
+tera = "1"
+rand = "0.8.5"
+sha256 = "1.1.4"
+dioxus = "0.4.0"
+dioxus-desktop = "0.4.0"
+

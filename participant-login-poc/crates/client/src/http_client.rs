@@ -17,7 +17,7 @@ pub struct AuthResponse {
 }
 
 impl HttpClient {
-    /// Creates a new HTTPS client
+    /// Creates a new HTTPS bin
     /// * `url` - The base URL to send the authentication request to. Must be PEP's authentication server's URL
     /// * `uid_field_name` - The name of the HTTP header that contains the user ID
     /// * `spoof_check_secret` - The secret to use for the Shibboleth spoof check
@@ -29,7 +29,7 @@ impl HttpClient {
             .connection_verbose(true) //print verbose connection info for debugging
             .redirect(redirect::Policy::none())//Do not follow redirects, so that I can get the code without contacting localhost:16515/
             .http1_title_case_headers();    //case-sensitive headers. See https://github.com/seanmonstar/reqwest/discussions/1895#discussioncomment-6355126
-        let client= client_builder.build().expect("Error building HTTPS client");
+        let client= client_builder.build().expect("Error building HTTPS bin");
 
         HttpClient {
             client,
