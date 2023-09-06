@@ -168,7 +168,7 @@ pub fn Disclose(cx: Scope) ->Element{
         cx, (),
         {
             to_owned![status];
-            move |_| async move { irma_disclose_id(&status.read().template_engine, &status.read().irma_session_handler).await }
+            move |_| async move { irma_disclose_id(&status.read().irma_session_handler).await }
         },
     ).value();
 
@@ -290,7 +290,7 @@ pub fn Qr(cx: Scope<QrCode>) -> Element {
  * * `template_engine` - The template engine to use to render the QR code
  * * `irma_session_handler` - The IRMA session handler to use to start the session
  */
-async fn irma_disclose_id(template_engine: &Tera, irma_session_handler: &IrmaSessionHandler) -> Result<RequestResult, irma::Error> {
+async fn irma_disclose_id(irma_session_handler: &IrmaSessionHandler) -> Result<RequestResult, irma::Error> {
     let request_result = irma_session_handler
         .disclose_id(String::from("irma-demo.PEP.id.id"))
         .await?;
@@ -306,11 +306,8 @@ async fn irma_disclose_id(template_engine: &Tera, irma_session_handler: &IrmaSes
  * * `irma_session_handler` - The IRMA session handler to use to get the status
  */
 async fn get_status(session_id: &String, irma_session_handler: &IrmaSessionHandler) -> Result<SessionResult, irma::Error> {
-    println!("Called get_status with session_id: {}", session_id);
     let session_token = SessionToken(session_id.to_string());
-    let result=irma_session_handler.get_status(&session_token).await;
-    println!("get_status is about to return {:?}", result);
-    return result;
+    irma_session_handler.get_status(&session_token).await
 }
 
 
@@ -321,7 +318,7 @@ async fn success(session_id: String, irma_session_handler: IrmaSessionHandler, t
     let request = request_code_for_token(&config.server_address, &disclosed_attribute, &config.spoof_check_secret, &config.uid_field_name, &http_client);
     let mut context = tera::Context::new();
     let code_for_token = request.await;
-    return match code_for_token {
+     match code_for_token {
         Ok(codes) => {
             context.insert("disclosed_attribute", &disclosed_attribute);
             context.insert("code_for_token", &codes.code);
@@ -335,7 +332,7 @@ async fn success(session_id: String, irma_session_handler: IrmaSessionHandler, t
             let rendered_html = template_engine.render("error.html", &context).unwrap();
             rendered_html
         }
-    };
+    }
 }
 
 
@@ -349,7 +346,7 @@ async fn success(session_id: String, irma_session_handler: IrmaSessionHandler, t
 * * `user_id` - The user ID to send in the HTTP header
 * * `spoof_check_secret` - The secret to use for the Shibboleth spoof check
 * * `uid_field_name` - The name of the HTTP header that contains the user ID
-* * `bin` - The HTTP bin to use to send the request
+* * `client` - The HTTP client to use to send the request
 */
 async fn request_code_for_token(server_address: &str, user_id: &str, spoof_check_secret: &str, uid_field_name: &str, client: &HttpClient) -> Result<Codes, Box<dyn Error>> {
     let auth_response = client
