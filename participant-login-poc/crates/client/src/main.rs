@@ -16,6 +16,7 @@ struct State {
     config: Config,
     template_engine: Tera,
     irma_session_handler: IrmaSessionHandler,
+    irma_session_id: Option<String>,
     http_client: HttpClient,
     current_status: CurrentStatus,
 }
@@ -41,6 +42,11 @@ pub struct IrmaSessionId {
 #[derive(PartialEq, Props)]
 pub struct QrCode {
     qr: String,
+}
+
+#[derive(PartialEq, Props)]
+pub struct SessionID {
+    session_id: String,
 }
 
 
@@ -112,6 +118,7 @@ fn App(cx: Scope<'_>) -> Element<'_> {
                 config: config,
                 template_engine: tera,
                 irma_session_handler: irma_session_handler,
+                irma_session_id: None,
                 http_client: http_client,
                 current_status: CurrentStatus::StartUp,
             };
@@ -237,7 +244,7 @@ pub fn IrmaSessionStatus(cx: Scope<IrmaSessionId>)->Element{
                         }
                         irma::SessionStatus::Done=>{
                             println!("done");
-                            //status.write().current_status=CurrentStatus::Success;   //Go to next step
+                            status.write().current_status=CurrentStatus::IrmaSessionDone;   //Go to next step
                             cx.render(rsx!(div{"Login session done, please wait while we log you in."})) //It's actually lying
                         }
                         _=> {
@@ -286,6 +293,13 @@ pub fn Qr(cx: Scope<QrCode>) -> Element {
                         dangerous_inner_html: "{html}"
                     })
     )
+}
+
+#[allow(non_snake_case)] //UpperCamelCase isn't just a convention in Dioxus
+pub fn GetIRMAattribute(cx: Scope<SessionID>) -> Element {
+    cx.render(rsx!(div{
+        "TODO"
+    }))
 }
 
 /**
