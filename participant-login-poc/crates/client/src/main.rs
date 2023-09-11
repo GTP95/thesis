@@ -10,7 +10,7 @@ use dioxus::prelude::*;
 use irma::{SessionResult, SessionStatus, SessionToken};
 use tera::Tera;
 
-enum CurrentStatus { StartUp, Disclose, Success, Error }
+enum CurrentStatus { StartUp, Disclose, IrmaSessionDone, Success, Error }
 
 struct State {
     config: Config,
@@ -127,6 +127,9 @@ fn App(cx: Scope<'_>) -> Element<'_> {
                 CurrentStatus::Disclose => {
                     render! {Disclose{}}
                 }
+                CurrentStatus::IrmaSessionDone => {
+                    render! {IrmaSessionStatus{session_id: String::from("TODO")}}
+                }
                 CurrentStatus::Success => { cx.render(rsx!("Logged in")) }
                 CurrentStatus::Error => { cx.render(rsx!("Error")) }
             }
@@ -204,6 +207,7 @@ pub fn Disclose(cx: Scope) ->Element{
 pub fn IrmaSessionStatus(cx: Scope<IrmaSessionId>)->Element{
     let status = use_shared_state::<State>(cx).unwrap();
     let session_id= cx.props.session_id.clone();
+
     let future_irma_session_result = use_future(
         cx, (),
         {
