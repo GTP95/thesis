@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::fs::read;
 use rand::{Rng, SeedableRng};
 use rand::rngs::StdRng;
@@ -19,7 +18,7 @@ pub struct AuthResponse {
 }
 
 impl HttpClient {
-    /// Creates a new HTTPS bin
+    /// Creates a new HTTPS client.
     /// * `url` - The base URL to send the authentication request to. Must be PEP's authentication server's URL
     /// * `uid_field_name` - The name of the HTTP header that contains the user ID
     /// * `spoof_check_secret` - The secret to use for the Shibboleth spoof check
@@ -67,7 +66,7 @@ impl HttpClient {
         Ok(result)
     }
 
-    pub async fn get_token(self, code: &str, code_verifier: &str)->Result<Response, Error>{
+    pub async fn get_token(&self, code: &str, code_verifier: &[u8; 32])->Result<Response, Error>{
         let token_endpoint=self.url.to_owned()+"/token";
         let request_body=json!({
             "client_id": 123,

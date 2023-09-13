@@ -333,7 +333,7 @@ async fn success(session_id: String, irma_session_handler: IrmaSessionHandler, t
     let session_token = SessionToken(session_id);
     let session_result = irma_session_handler.get_status(&session_token).await;
     let disclosed_attribute = session_result.unwrap().disclosed[0][0].clone().raw_value.unwrap(); //TODO: see if this expression can be simplified
-    let request = request_code_for_token(&config.server_address, &disclosed_attribute, &config.spoof_check_secret, &config.uid_field_name, &http_client);
+    let request = request_code_for_token(&disclosed_attribute, &http_client);
     let mut context = tera::Context::new();
     let code_for_token = request.await;
      match code_for_token {
@@ -366,7 +366,7 @@ async fn success(session_id: String, irma_session_handler: IrmaSessionHandler, t
 * * `uid_field_name` - The name of the HTTP header that contains the user ID
 * * `client` - The HTTP client to use to send the request
 */
-async fn request_code_for_token(server_address: &str, user_id: &str, spoof_check_secret: &str, uid_field_name: &str, client: &HttpClient) -> Result<Codes, Box<dyn Error>> {
+async fn request_code_for_token(user_id: &str, client: &HttpClient) -> Result<Codes, Box<dyn Error>> {
     let auth_response = client
         .send_auth_request(&String::from(user_id))
         .await?;
