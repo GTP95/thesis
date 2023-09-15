@@ -4,6 +4,7 @@ mod http_client;
 use std::error::Error;
 use std::fs;
 use std::future::Future;
+use std::fmt;
 use reqwest::Response;
 use serde_json::json;
 use rocket::{launch, get, routes, State};
@@ -17,6 +18,24 @@ struct Codes {
     code: String,
     code_verifier: [u8; 32],
 }
+
+/**
+    * My own error type for the get_codes_for_token function.
+    * I need this to avoid using the `dyn` keyword in the function's signature, which isn't thread-safe.
+    */
+type CodeResult<T> = std::result::Result<T, GetCodesError>;
+#[derive(Debug, Clone)]
+struct GetCodesError {
+    message: String,
+}
+
+impl fmt::Display for GetCodesError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "GetTokenError: {}", self.message)
+    }
+}
+
+
 
 /**
     * Starts an IRMA session to disclose the user's PEP ID and returns a QR code to perform the session
@@ -203,7 +222,7 @@ async fn irma_disclose_id(irma_session_handler: &IrmaSessionHandler) -> Result<R
 * * `uid_field_name` - The name of the HTTP header that contains the user ID
 * * `client` - The HTTP client to use to send the request
  */
-async fn request_code_for_token(user_id: &str, client: &HttpClient) -> Result<Codes, Box<dyn Error>> {
+async fn request_code_for_token(user_id: &str, client: &HttpClient) -> CodeResult<Codes> {
     let auth_response = client
         .send_auth_request(&String::from(user_id))
         .await?;
