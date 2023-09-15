@@ -225,16 +225,35 @@ async fn irma_disclose_id(irma_session_handler: &IrmaSessionHandler) -> Result<R
 async fn request_code_for_token(user_id: &str, client: &HttpClient) -> CodeResult<Codes> {
     let auth_response = client
         .send_auth_request(&String::from(user_id))
-        .await?;
-    let redirect_url = auth_response.response.headers()["location"].to_str()?;
-    let code_verifier = auth_response.code_verifier;
-    let code = redirect_url.split('=').collect::<Vec<&str>>()[1].to_owned();
+        .await;
+    match auth_response{
+        Ok(auth_response)=>{
+            let redirect_url = auth_response.response.headers()["location"].to_str();
+            match redirect_url{
+                Ok(redirect_url)=>{
+                    let code_verifier = auth_response.code_verifier;
+                    let code = redirect_url.split('=').collect::<Vec<&str>>()[1].to_owned();
 
-    let result = Codes {
-        code,
-        code_verifier,
-    };
-    Ok(result)
+                    let result = Codes {
+                        code,
+                        code_verifier,
+                    };
+                    Ok(result)
+                }
+                Err(e)=>{
+                    Err(GetCodesError {
+                        message: e.to_string(),
+                    })
+                }
+            }
+
+        }
+        Err(error)=>{
+            Err(GetCodesError {
+                message: error.to_string(),
+            })
+        }
+    }
 }
 
 
