@@ -131,7 +131,7 @@ impl HttpClient {
                         "DONE" => Ok(SessionStatus::Done),
                         "TIMEOUT" => Ok(SessionStatus::Timeout),
 
-                        _ => {Err(GetStatusError{message: String::from("Unknown status")} )}
+                        _ => {Err(GetStatusError{message: String::from("Unknown status: ".to_owned()+status.as_str())} )}
                     }
                     Err(error) => {Err(GetStatusError{message: error.to_string()} )}
                 }

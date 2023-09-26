@@ -72,7 +72,7 @@ pub async fn qr(irma_session_handler: &State<IrmaSessionHandler>) -> status::Cus
     */
 #[get("/status/<sessionptr>")]
 pub async fn irma_session_status(sessionptr: &str, irma_session_handler: &State<IrmaSessionHandler>) -> status::Custom<content::RawJson<String>> {
-    let session_token = serde_json::from_str(sessionptr).expect("Error parsing session pointer");
+    let session_token = irma::SessionToken(sessionptr.to_string());
     let session_result = irma_session_handler.get_status(&session_token).await;
     match session_result {
         Ok(session_result) => {
