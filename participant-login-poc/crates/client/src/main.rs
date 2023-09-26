@@ -178,13 +178,13 @@ pub fn Disclose(cx: Scope) ->Element{
         cx, (),
         {
             to_owned![status];
-            move |_| async move { &status.read().http_client.request_qr_code_and_sessionptr().await }
+            move |_| async move { status.read().http_client.request_qr_code_and_sessionptr().await }
         },
     ).value();
 
     match qr_and_session_id {
         None => {
-            cx.render(rsx!(div{"Waiting for the IRMA server to respond..."}))
+            cx.render(rsx!(div{"Waiting for the server to respond..."}))
         }
         Some(Ok(qr_and_session_id)) => {
             let session_id = &qr_and_session_id.session_ptr;

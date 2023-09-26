@@ -21,21 +21,53 @@ pub struct AuthResponse {
 }
 
 /** Stores the QR code and the session pointer of an IRMA session */
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct QRCodeAndSessionPtr {
     pub qr_code: String,
     pub session_ptr: String
 }
 
-/** My own type to handle errors getting IRMA session status */
+/** My own type to handle errors getting IRMA session status
+ * Needs to be public to avoid ownership errors in the main.rs file
+ */
 #[derive(Debug, Clone)]
-struct GetStatusError {
+pub struct GetStatusError {
    pub message: String,
 }
 
 impl fmt::Display for GetStatusError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "GetStatusError: {}", self.message)
+    }
+}
+
+/**My own generic error to sidestep ownership issues in Dioxus' multithreaded code */
+#[derive(Debug, Clone)]
+pub struct BoxedError {
+    pub message: String,
+}
+impl fmt::Display for BoxedError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "BoxedError: {}", self.message)
+    }
+}
+
+
+/**Converts a serde_json::Error into a BoxedError */
+impl From<serde_json::Error> for BoxedError {
+    fn from(error: serde_json::Error) -> Self {
+        BoxedError {
+            message: error.to_string()
+        }
+    }
+}
+
+/**Converts a reqwest::Error into a BoxedError */
+impl From<reqwest::Error> for BoxedError {
+    fn from(error: reqwest::Error) -> Self {
+        BoxedError {
+            message: error.to_string()
+        }
     }
 }
 
@@ -62,7 +94,7 @@ impl HttpClient {
         }
     }
 
-    pub async fn request_qr_code_and_sessionptr(&self) ->Result<QRCodeAndSessionPtr, Box<dyn Error>>{
+    pub async fn request_qr_code_and_sessionptr(&self) ->Result<QRCodeAndSessionPtr, BoxedError>{
         let result=reqwest::get(self.url.clone()+&std::string::String::from("/qr")).await;
         match result {
             Ok(response) => {
@@ -71,7 +103,7 @@ impl HttpClient {
                 Ok(qr_code_and_sessionptr)
             }
             Err(error) => {
-                Err(Box::try_from(error).unwrap())
+                Err(BoxedError{message: error.to_string()})
             }
         }
 
