@@ -49,8 +49,8 @@ pub async fn qr(irma_session_handler: &State<IrmaSessionHandler>) -> status::Cus
         Ok(request_result) => {
             let sessionptr = request_result.session.token.0;
             let json = json!({
-                "qr": request_result.qr,
-                "sessionptr": sessionptr
+                "qr_code": request_result.qr,
+                "session_ptr": sessionptr
             }).to_string();
             status::Custom(Status::Ok, content::RawJson(json))
         }
@@ -157,6 +157,7 @@ pub async fn irma_session_result(sessionptr: &str, irma_session_handler: &State<
     }
 }
 
+/**Rocket's entry point*/
 #[launch]
 fn rocket() -> _ {
     //open and parse config.toml configuration file
@@ -193,7 +194,7 @@ fn rocket() -> _ {
     let http_client = http_client::HttpClient::new(auth_server_address.to_string(), uid_field_name.to_string(), spoof_check_secret, path_to_root_ca_certificate.to_string());
 
     rocket::build()
-        .mount("/base", routes![qr])
+        .mount("/", routes![qr, irma_session_status, irma_session_result])
         .manage(irma_session_handler)
         .manage(http_client)
 }

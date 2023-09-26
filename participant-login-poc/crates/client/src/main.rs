@@ -174,7 +174,7 @@ pub fn Disclose(cx: Scope) ->Element{
         }
         Some(Ok(qr_and_session_id)) => {
             let session_id = &qr_and_session_id.session_ptr;
-            let qr_code = &qr_and_session_id.session_ptr;
+            let qr_code = &qr_and_session_id.qr_code;
             //status.write().current_status=CurrentStatus::Disclose;   //Go to next step
             cx.render(rsx!{
                 Qr{qr: qr_code.to_string()},
