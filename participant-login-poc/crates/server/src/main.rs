@@ -161,7 +161,7 @@ pub async fn irma_session_result(sessionptr: &str, irma_session_handler: &State<
 fn rocket() -> _ {
     //open and parse config.toml configuration file
     let config =
-        fs::read_to_string("config/config.toml").expect("Error reading config/config.toml file");
+        fs::read_to_string("crates/server/config/config.toml").expect("Error reading config/config.toml file");
     let config: toml::Value =
         toml::from_str(&config).expect("Error parsing config/config.toml file");
 
