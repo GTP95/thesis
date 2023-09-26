@@ -15,7 +15,6 @@ enum CurrentStatus { StartUp, Disclose, IrmaSessionDone, Success, Error }
 struct State {
     config: Config,
     template_engine: Tera,
-    irma_session_handler: IrmaSessionHandler,
     irma_session_id: Option<String>,
     http_client: HttpClient,
     current_status: CurrentStatus,
@@ -77,12 +76,10 @@ fn App(cx: Scope<'_>) -> Element<'_> {
     let uid_field_name = config["uid_field_name"]
         .as_str()
         .expect("Error parsing uid_field_name from config/config.toml");
-    let auth_server_address = config["auth_server_address"]
+    let middleware_auth_server_address = config["middleware_auth_server_address"]
         .as_str()
         .expect("Error parsing auth_server_address from config/config.toml");
-    let irma_server_address = config["irma_server_address"]
-        .as_str()
-        .expect("Error parsing irma_server_address from config/config.toml");
+
 
 
     //get spoof_check_secret from path_to_spoof_check_secret_file
@@ -101,51 +98,40 @@ fn App(cx: Scope<'_>) -> Element<'_> {
 
     tera.autoescape_on(vec![]); //Turns escaping OFF, otherwise the SVG containing the QR code in the disclose page gets displayed as text (i.e, the text description of the SVG format, no image)
 
-    let irma_session_handler = IrmaSessionHandler::new(irma_server_address);
-    let http_client = http_client::HttpClient::new(auth_server_address.parse().unwrap(), uid_field_name.parse().unwrap(), spoof_check_secret.parse().unwrap(), path_to_root_ca_certificate.parse().unwrap());
+    let http_client = http_client::HttpClient::new(middleware_auth_server_address.parse().unwrap(), uid_field_name.parse().unwrap(), spoof_check_secret.parse().unwrap(), path_to_root_ca_certificate.parse().unwrap());
 
 
     let config = Config {
-        server_address: String::from(auth_server_address),
+        server_address: String::from(middleware_auth_server_address),
         user_id: String::from(uid_field_name),
         spoof_check_secret: spoof_check_secret,
         uid_field_name: String::from(uid_field_name),
     };
 
-    match irma_session_handler {
-        Ok(irma_session_handler) => {   //If I can create the IRMA session handler, the application works as expected
-            let status = State {
-                config: config,
-                template_engine: tera,
-                irma_session_handler: irma_session_handler,
-                irma_session_id: None,
-                http_client: http_client,
-                current_status: CurrentStatus::StartUp,
-            };
+    let status = State {
+        config: config,
+        template_engine: tera,
+        irma_session_id: None,
+        http_client: http_client,
+        current_status: CurrentStatus::StartUp,
+    };
 
-            use_shared_state_provider(cx, || status);
+    use_shared_state_provider(cx, || status);
 
-            let status = use_shared_state::<State>(cx).unwrap().read();  //Get a new reference since I lost ownership by calling use_shared_state_provider
+    let status = use_shared_state::<State>(cx).unwrap().read();  //Get a new reference since I lost ownership by calling use_shared_state_provider
 
-            match status.current_status {
-                CurrentStatus::StartUp => {
-                    render! {Startup{ }}
-                }
-                CurrentStatus::Disclose => {
-                    render! {Disclose{}}
-                }
-                CurrentStatus::IrmaSessionDone => {
-                    render! {IrmaSessionStatus{session_id: String::from("TODO")}}
-                }
-                CurrentStatus::Success => { cx.render(rsx!("Logged in")) }
-                CurrentStatus::Error => { cx.render(rsx!("Error")) }
-            }
+    match status.current_status {
+        CurrentStatus::StartUp => {
+            render! {Startup{ }}
         }
-        Err(error) => { //If I can't create the IRMA session handler, the application can't work as expected. TODO: somehow this doesn't work and the error is reported only later, after clicking on the button
-            let status = use_shared_state::<State>(cx).unwrap();
-            status.write().current_status = CurrentStatus::Error;
-            render! {error.to_string()}
+        CurrentStatus::Disclose => {
+            render! {Disclose{}}
         }
+        CurrentStatus::IrmaSessionDone => {
+            render! {IrmaSessionStatus{session_id: String::from("TODO")}}
+        }
+        CurrentStatus::Success => { cx.render(rsx!("Logged in")) }
+        CurrentStatus::Error => { cx.render(rsx!("Error")) }
     }
 }
 
