@@ -240,8 +240,10 @@ pub fn IrmaSessionStatus(cx: Scope<IrmaSessionId>)->Element{
                     }
                 }
                 Err(error) => {
-                    println!("irma_session_result contains error {:?}", error.to_string());
                     match error.message.as_str() {
+                        "Unknown status: {\"error\":\"Irma session not finished\"}"=> {
+                            cx.render(rsx!(div{"Please scan the QR code with the Yivi app."}))
+                        },
                         _ => {
                             cx.render(rsx!(div{"Error: {error.to_string()}"}))
                         }
