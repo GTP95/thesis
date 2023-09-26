@@ -78,13 +78,16 @@ pub async fn irma_session_status(sessionptr: &str, irma_session_handler: &State<
         Ok(session_result) => {
             let json = json!({
                 "status": session_result.status,
-                "attributes": session_result.disclosed
+                "attributes": session_result.disclosed,
+                "error": "none"
             }).to_string();
             status::Custom(Status::Ok, content::RawJson(json))
         }
 
         Err(error) => {
             let json = json!({
+                "status": "error",
+                "attributes": [],
                 "error": error.to_string()
             }).to_string();
             status::Custom(Status::InternalServerError, content::RawJson(json))
