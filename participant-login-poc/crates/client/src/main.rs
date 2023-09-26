@@ -2,7 +2,7 @@ mod http_client;
 mod irma_session_handler;
 
 
-use std::error::Error;
+
 use crate::irma_session_handler::{IrmaSessionHandler, RequestResult};
 use crate::http_client::HttpClient;
 use std::fs;
@@ -178,7 +178,7 @@ pub fn Disclose(cx: Scope) ->Element{
         cx, (),
         {
             to_owned![status];
-            move |_| async move { irma_disclose_id(&status.read().irma_session_handler).await }
+            move |_| async move { &status.read().http_client.request_qr_code_and_sessionptr().await }
         },
     ).value();
 
@@ -187,11 +187,11 @@ pub fn Disclose(cx: Scope) ->Element{
             cx.render(rsx!(div{"Waiting for the IRMA server to respond..."}))
         }
         Some(Ok(qr_and_session_id)) => {
-            let session_id = &qr_and_session_id.session.token.0;
-            let qr_code = qr_and_session_id.qr.clone();
+            let session_id = &qr_and_session_id.session_ptr;
+            let qr_code = &qr_and_session_id.session_ptr;
             //status.write().current_status=CurrentStatus::Disclose;   //Go to next step
             cx.render(rsx!{
-                Qr{qr: qr_code},
+                Qr{qr: qr_code.to_string()},
                 IrmaSessionStatus{session_id: session_id.to_string()},
             })
         }
@@ -219,7 +219,7 @@ pub fn IrmaSessionStatus(cx: Scope<IrmaSessionId>)->Element{
         cx, (),
         {
             to_owned![status];
-            move |_| async move { get_status(&session_id, &status.read().irma_session_handler).await }
+            move |_| async move { status.read().http_client.get_irma_session_status(&session_id).await }
         },
     );
     let irma_session_result = future_irma_session_result.state();   //I need two separate variables, so that I can restart the future later. I restart the future until I have a result to implement polling
@@ -232,8 +232,8 @@ pub fn IrmaSessionStatus(cx: Scope<IrmaSessionId>)->Element{
         dioxus::prelude::UseFutureState::Complete(irma_session_result) => {
             print!("Complete, ");
             match irma_session_result {
-                Ok(session_result) => {
-                    match session_result.status {
+                Ok(session_status) => {
+                    match session_status {
                         irma::SessionStatus::Timeout=>{
                             println!("timeout");
                             cx.render(rsx!(div{"Login session timed out, please try again."}))
@@ -248,22 +248,17 @@ pub fn IrmaSessionStatus(cx: Scope<IrmaSessionId>)->Element{
                             cx.render(rsx!(div{"Login session done, please wait while we log you in."})) //It's actually lying
                         }
                         _=> {
-                            println!("other status: {:?}", session_result.status);
+                            println!("other status: {:?}", session_status);
                             cx.render(rsx!(div{"Please scan the QR code with the Yivi app."}))
                         }
                     }
                 }
                 Err(error) => {
                     println!("irma_session_result contains error {:?}", error.to_string());
-                    match error {
-                        irma::Error::InvalidUrl(_) => {cx.render(rsx!(div{"Error, can't connect to IRMA server. Please try again later. If you would like to report this error, please include the following information: {error.to_string()}"}) )}
-                        irma::Error::NetworkError(_) => {cx.render(rsx!(div{"Error, can't connect to IRMA server. Please try again later. If you would like to report this error, please include the following information: {error.to_string()}"}))}
-                        irma::Error::SessionCancelled => {cx.render(rsx!(div{"Login session cancelled, please try again."}))}
-                        irma::Error::SessionTimedOut => {cx.render(rsx!(div{"Login session timed out, please try again."}))}
-                        irma::Error::SessionNotFinished(_) => {
-                            println!("Session not finished, restarting...");
-                            future_irma_session_result.restart();
-                            cx.render(rsx!(div{"Please scan this QR code with the Yivi app and share your data."}))}
+                    match error.message.as_str() {
+                        _ => {
+                            cx.render(rsx!(div{"Error: {error.to_string()}"}))
+                        }
                     }
                 }
             }
@@ -329,55 +324,12 @@ async fn get_status(session_id: &String, irma_session_handler: &IrmaSessionHandl
 }
 
 
-async fn success(session_id: String, irma_session_handler: IrmaSessionHandler, template_engine: Tera, config: Config, http_client: HttpClient) -> String {
-    let session_token = SessionToken(session_id);
-    let session_result = irma_session_handler.get_status(&session_token).await;
-    let disclosed_attribute = session_result.unwrap().disclosed[0][0].clone().raw_value.unwrap(); //TODO: see if this expression can be simplified
-    let request = request_code_for_token(&disclosed_attribute, &http_client);
-    let mut context = tera::Context::new();
-    let code_for_token = request.await;
-     match code_for_token {
-        Ok(codes) => {
-            context.insert("disclosed_attribute", &disclosed_attribute);
-            context.insert("code_for_token", &codes.code);
-            context.insert("auth_server_base_url", &config.server_address);
-            context.insert("code_verifier", &codes.code_verifier);
-            let rendered_html = template_engine.render("Success.html", &context).unwrap();
-            rendered_html
-        }
-        Err(error) => {
-            context.insert("error_message", &error.to_string());
-            let rendered_html = template_engine.render("error.html", &context).unwrap();
-            rendered_html
-        }
-    }
-}
 
 
 
 
 
 
-/**Sends an HTTP request to PEP's auth server containing the headers with the disclosed attribute
-* # Arguments
-* * `server_address` - The base URL of the PEP auth server
-* * `user_id` - The user ID to send in the HTTP header
-* * `spoof_check_secret` - The secret to use for the Shibboleth spoof check
-* * `uid_field_name` - The name of the HTTP header that contains the user ID
-* * `client` - The HTTP client to use to send the request
-*/
-async fn request_code_for_token(user_id: &str, client: &HttpClient) -> Result<Codes, Box<dyn Error>> {
-    let auth_response = client
-        .send_auth_request(&String::from(user_id))
-        .await?;
-    let redirect_url = auth_response.response.headers()["location"].to_str()?;
-    let code_verifier = auth_response.code_verifier;
-    let code = redirect_url.split('=').collect::<Vec<&str>>()[1].to_owned();
 
-    let result = Codes {
-        code,
-        code_verifier,
-    };
-    Ok(result)
-}
+
 

@@ -1,8 +1,12 @@
+use std::error::Error;
+use std::fmt;
 use std::fs::read;
-use rand::{Rng, SeedableRng};
-use rand::rngs::StdRng;
 use reqwest::redirect;
-use sha256::digest;
+use irma::SessionStatus;
+use serde::{Deserialize, Serialize};
+use serde_json::Result as SerdeResult;
+
+
 
 pub struct HttpClient {
     pub client: reqwest::Client,
@@ -14,6 +18,25 @@ pub struct HttpClient {
 pub struct AuthResponse {
     pub code_verifier: [u8; 32],
     pub response: reqwest::Response
+}
+
+/** Stores the QR code and the session pointer of an IRMA session */
+#[derive(Serialize, Deserialize)]
+pub struct QRCodeAndSessionPtr {
+    pub qr_code: String,
+    pub session_ptr: String
+}
+
+/** My own type to handle errors getting IRMA session status */
+#[derive(Debug, Clone)]
+struct GetStatusError {
+   pub message: String,
+}
+
+impl fmt::Display for GetStatusError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "GetStatusError: {}", self.message)
+    }
 }
 
 impl HttpClient {
@@ -39,30 +62,47 @@ impl HttpClient {
         }
     }
 
-    /// Sends an authentication request to the server. Handles PEP's authentication flow.
-    /// * `uid` - The user ID to send in the HTTP header
-    pub async fn send_auth_request(&self, uid: &str) -> Result<AuthResponse, reqwest::Error> {
-        // Use the ChaCha20 or ChaCha12 cipher as a pseudorandom number generator to generate a random string of 32 bytes
-        // This gives a security level of 128 bits against collisions, so it's in line with the rest of PEP
-        // It is subject to change, see https://docs.rs/rand/0.7.0/rand/rngs/struct.StdRng.html#impl-Rng
-        let mut code_verifier = [0u8; 32];
-        let mut rng = StdRng::from_entropy();   //TODO: Since this is thread-safe, it should be possible to have a single instance of this for the entire application. But this isn't trivial due to ownership issues.
-        rng.fill(&mut code_verifier[..]);
+    pub async fn request_qr_code_and_sessionptr(&self) ->Result<QRCodeAndSessionPtr, Box<dyn Error>>{
+        let result=reqwest::get(self.url.clone()+&std::string::String::from("/qr")).await;
+        match result {
+            Ok(response) => {
+                let qr_code_and_sessionptr = response.text().await?;
+                let qr_code_and_sessionptr: QRCodeAndSessionPtr = serde_json::from_str(&qr_code_and_sessionptr)?;
+                Ok(qr_code_and_sessionptr)
+            }
+            Err(error) => {
+                Err(Box::try_from(error).unwrap())
+            }
+        }
 
-        let code_challenge= digest(&code_verifier);
-        let auth_endpoint_url_with_params=self.url.to_owned()+"/auth?&user="+uid+"&client_id=123&redirect_uri=http://127.0.0.1:16515/&response_type=code&code_challenge="+&code_challenge+"&code_challenge_method=S256";
-        let response = self.client
-            .get(auth_endpoint_url_with_params)
-            .header("Shib-Spoof-Check", &self.spoof_check_secret)
-            .header(self.uid_field_name.clone(), uid)
-            .body("")
-            .send()
-            .await?;
-        let result=AuthResponse {
-            code_verifier,
-            response
-        };
-        Ok(result)
+    }
+
+    pub async fn get_irma_session_status(&self, session_token: &str)->Result<SessionStatus, GetStatusError>{
+        //query the /status endpoint of the server component
+        let response=reqwest::get((&self.url).to_owned()+"/status/"+session_token).await;
+        match response {
+            Ok(response) => {
+                let response=response.text().await;
+                match response{
+                    Ok(status)=>match status.as_str() {
+                        "INITIALIZED" => Ok(SessionStatus::Initialized),
+                        "PAIRING" => Ok(SessionStatus::Pairing),
+                        "CONNECTED" => Ok(SessionStatus::Connected),
+                        "CANCELLED" => Ok(SessionStatus::Cancelled),
+                        "DONE" => Ok(SessionStatus::Done),
+                        "TIMEOUT" => Ok(SessionStatus::Timeout),
+
+                        _ => {Err(GetStatusError{message: String::from("Unknown status")} )}
+                    }
+                    Err(error) => {Err(GetStatusError{message: error.to_string()} )}
+                }
+
+
+
+            }
+            Err(error) => {Err(GetStatusError{message: error.to_string()} )}
+        }
+
     }
 
 }
