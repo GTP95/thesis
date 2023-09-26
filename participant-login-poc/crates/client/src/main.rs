@@ -196,7 +196,7 @@ pub fn Disclose(cx: Scope) ->Element{
             })
         }
         Some(Err(error)) => {
-            cx.render(rsx!(div{"Error, can't connect to IRMA server. Please try again later. If you would like to report this error, please include the following information: {error.to_string()}"}))
+            cx.render(rsx!(div{"Error, can't get the QR code needed for authentication. Please try again later. If you would like to report this error, please include the following information: {error.to_string()}"}))
         }
     }
 

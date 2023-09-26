@@ -1,7 +1,7 @@
 use std::error::Error;
 use std::fmt;
 use std::fs::read;
-use reqwest::redirect;
+use reqwest::{redirect, Response};
 use irma::SessionStatus;
 use serde::{Deserialize, Serialize};
 use serde_json::Result as SerdeResult;
@@ -98,9 +98,16 @@ impl HttpClient {
         let result=reqwest::get(self.url.clone()+&std::string::String::from("/qr")).await;
         match result {
             Ok(response) => {
-                let qr_code_and_sessionptr = response.text().await?;
-                let qr_code_and_sessionptr: QRCodeAndSessionPtr = serde_json::from_str(&qr_code_and_sessionptr)?;
-                Ok(qr_code_and_sessionptr)
+                match response.status() {
+                    reqwest::StatusCode::OK => {
+                        let qr_code_and_sessionptr = response.text().await?;
+                        println!("qr_code_and_sessionptr: {}", qr_code_and_sessionptr); //DEBUG
+                        let qr_code_and_sessionptr: QRCodeAndSessionPtr = serde_json::from_str(&qr_code_and_sessionptr)?;
+                        Ok(qr_code_and_sessionptr)
+                    },
+                    _ => {Err(BoxedError{message: format!("Error getting QR code and session pointer: {}", response.status())})}
+                }
+
             }
             Err(error) => {
                 Err(BoxedError{message: error.to_string()})
