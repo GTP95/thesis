@@ -5,7 +5,6 @@ use std::error::Error;
 use std::fs;
 use std::future::Future;
 use std::fmt;
-use reqwest::Response;
 use serde_json::json;
 use rocket::{launch, get, routes, State};
 use rocket::http::Status;
