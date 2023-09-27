@@ -165,13 +165,13 @@ impl HttpClient {
                 let response=response.text().await;
                 println!("response: {:?}", response); //DEBUG
                 let response: IrmaSessionStatusResponse = serde_json::from_str(&response.unwrap())?;
-                match response.status.as_str() {
-                    "Initialized" => {Ok(IrmaSessionStatus::Initialized)},
-                    "Pairing" => {Ok(IrmaSessionStatus::Pairing)},
-                    "Connected" => {Ok(IrmaSessionStatus::Connected)},
-                    "Cancelled" => {Ok(IrmaSessionStatus::Cancelled)},
-                    "DONE" => {Ok(IrmaSessionStatus::Done)},
-                    "Timeout" => {Ok(IrmaSessionStatus::Timeout)},
+                match response.status.to_lowercase().as_str() {
+                    "initialized" => {Ok(IrmaSessionStatus::Initialized)},
+                    "pairing" => {Ok(IrmaSessionStatus::Pairing)},
+                    "connected" => {Ok(IrmaSessionStatus::Connected)},
+                    "cancelled" => {Ok(IrmaSessionStatus::Cancelled)},
+                    "done" => {Ok(IrmaSessionStatus::Done)},
+                    "timeout" => {Ok(IrmaSessionStatus::Timeout)},
                     "error" => {
                         if response.error=="Irma session not finished"{
                         Ok(IrmaSessionStatus::NotFinished)}
