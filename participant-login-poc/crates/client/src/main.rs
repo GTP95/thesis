@@ -7,8 +7,9 @@ use crate::irma_session_handler::{IrmaSessionHandler, RequestResult};
 use crate::http_client::HttpClient;
 use std::fs;
 use dioxus::prelude::*;
-use irma::{SessionResult, SessionStatus, SessionToken};
+use irma::{SessionResult, SessionToken};
 use tera::Tera;
+use http_client::IrmaSessionStatus;
 
 enum CurrentStatus { StartUp, Disclose, IrmaSessionDone, Success, Error }
 
@@ -212,29 +213,33 @@ pub fn IrmaSessionStatus(cx: Scope<IrmaSessionId>)->Element{
 
     match irma_session_result {
         dioxus::prelude::UseFutureState::Pending => {
-            println!("Pending...");
             cx.render(rsx!(div{"Please scan the QR code with the Yivi app."}))
         }
         dioxus::prelude::UseFutureState::Complete(irma_session_result) => {
-            print!("Complete, ");
             match irma_session_result {
                 Ok(session_status) => {
                     match session_status {
-                        irma::SessionStatus::Timeout=>{
+                       IrmaSessionStatus::Timeout=>{
                             println!("timeout");
                             cx.render(rsx!(div{"Login session timed out, please try again."}))
                         }
-                        irma::SessionStatus::Cancelled=>{
+                        IrmaSessionStatus::Cancelled=>{
                             println!("cancelled");
                             cx.render(rsx!(div{"Login session cancelled, please try again."}))
                         }
-                        irma::SessionStatus::Done=>{
+                        IrmaSessionStatus::Done=>{
                             println!("done");
                             status.write().current_status=CurrentStatus::IrmaSessionDone;   //Go to next step
                             cx.render(rsx!(div{"Login session done, please wait while we log you in."})) //It's actually lying
                         }
-                        _=> {
-                            println!("other status: {:?}", session_status);
+                        IrmaSessionStatus::NotFinished=> {
+                            println!("not finished");
+                            future_irma_session_result.restart(); //Restart the future to poll again
+                            cx.render(rsx!(div{"Please scan the QR code with the Yivi app."}))
+                        }
+                        _ => {
+                            println!("other");
+                            future_irma_session_result.restart(); //Restart the future to poll again
                             cx.render(rsx!(div{"Please scan the QR code with the Yivi app."}))
                         }
                     }

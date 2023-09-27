@@ -1,12 +1,7 @@
-use std::error::Error;
 use std::fmt;
 use std::fs::read;
-use reqwest::{redirect, Response};
-use irma::SessionStatus;
+use reqwest::redirect;
 use serde::{Deserialize, Serialize};
-use serde_json::Result as SerdeResult;
-
-
 
 pub struct HttpClient {
     pub client: reqwest::Client,
@@ -18,6 +13,28 @@ pub struct HttpClient {
 pub struct AuthResponse {
     pub code_verifier: [u8; 32],
     pub response: reqwest::Response
+}
+
+/** Used to parse the server's response a sJSON */
+#[derive(Serialize, Deserialize)]
+pub struct IrmaSessionStatusResponse {
+    attributes: Vec<Vec<Attribute>>,
+    error: String,
+    status: String,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct Attribute {
+    id: String,
+    rawvalue: String,
+    status: String,
+    value: Value,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct Value {
+    en: String,
+    nl: String,
 }
 
 /** Stores the QR code and the session pointer of an IRMA session */
@@ -41,6 +58,16 @@ impl fmt::Display for GetStatusError {
     }
 }
 
+impl From<serde_json::Error> for GetStatusError {
+    fn from(error: serde_json::Error) -> Self {
+        GetStatusError {
+            message: error.to_string()
+        }
+    }
+}
+
+
+
 /**My own generic error to sidestep ownership issues in Dioxus' multithreaded code */
 #[derive(Debug, Clone)]
 pub struct BoxedError {
@@ -57,7 +84,7 @@ impl fmt::Display for BoxedError {
 impl From<serde_json::Error> for BoxedError {
     fn from(error: serde_json::Error) -> Self {
         BoxedError {
-            message: error.to_string()
+            message: "serde_json error: ".to_owned()  + error.to_string().as_str()
         }
     }
 }
@@ -69,6 +96,20 @@ impl From<reqwest::Error> for BoxedError {
             message: error.to_string()
         }
     }
+}
+
+/** My own enum to represent IRMA session's status in a more logical way: curiously, the IRMA library
+*   considers the "NotFinished" case as an error.
+*/
+#[derive(Debug, Clone)]
+pub enum IrmaSessionStatus {
+    Initialized,
+    Pairing,
+    Connected,
+    Cancelled,
+    Done,
+    Timeout,
+    NotFinished
 }
 
 impl HttpClient {
@@ -116,24 +157,28 @@ impl HttpClient {
 
     }
 
-    pub async fn get_irma_session_status(&self, session_token: &str)->Result<SessionStatus, GetStatusError>{
+    pub async fn get_irma_session_status(&self, session_token: &str)->Result<IrmaSessionStatus, GetStatusError>{
         //query the /status endpoint of the server component
         let response=reqwest::get((&self.url).to_owned()+"/status/"+session_token).await;
         match response {
             Ok(response) => {
                 let response=response.text().await;
-                match response{
-                    Ok(status)=>match status.as_str() {
-                        "INITIALIZED" => Ok(SessionStatus::Initialized),
-                        "PAIRING" => Ok(SessionStatus::Pairing),
-                        "CONNECTED" => Ok(SessionStatus::Connected),
-                        "CANCELLED" => Ok(SessionStatus::Cancelled),
-                        "DONE" => Ok(SessionStatus::Done),
-                        "TIMEOUT" => Ok(SessionStatus::Timeout),
-
-                        _ => {Err(GetStatusError{message: String::from("Unknown status: ".to_owned()+status.as_str())} )}
-                    }
-                    Err(error) => {Err(GetStatusError{message: error.to_string()} )}
+                println!("response: {:?}", response); //DEBUG
+                let response: IrmaSessionStatusResponse = serde_json::from_str(&response.unwrap())?;
+                match response.status.as_str() {
+                    "Initialized" => {Ok(IrmaSessionStatus::Initialized)},
+                    "Pairing" => {Ok(IrmaSessionStatus::Pairing)},
+                    "Connected" => {Ok(IrmaSessionStatus::Connected)},
+                    "Cancelled" => {Ok(IrmaSessionStatus::Cancelled)},
+                    "DONE" => {Ok(IrmaSessionStatus::Done)},
+                    "Timeout" => {Ok(IrmaSessionStatus::Timeout)},
+                    "error" => {
+                        if response.error=="Irma session not finished"{
+                        Ok(IrmaSessionStatus::NotFinished)}
+                        else{
+                            Err(GetStatusError{message: format!("Error getting IRMA session status: {}", response.error)})
+                        }},
+                    _ => {Err(GetStatusError{message: format!("Error getting IRMA session status: invalid status returned: {}", response.status)})}
                 }
 
 
