@@ -245,16 +245,7 @@ pub fn IrmaSessionStatus(cx: Scope<IrmaSessionId>)->Element{
                     }
                 }
                 Err(error) => {
-                    match error.message.as_str() {
-                        "Unknown status: {\"error\":\"Irma session not finished\"}"=> { //This could be done more elegantly by turning GetStatus error into an enum
-                            future_irma_session_result.restart(); //Restart the future to poll again
-                            cx.render(rsx!(div{"Please scan the QR code with the Yivi app."}))
-
-                        },
-                        _ => {
-                            cx.render(rsx!(div{"Error: {error.to_string()}"}))
-                        }
-                    }
+                    cx.render(rsx!(div{"Error: {error.to_string()}"}))
                 }
             }
 
