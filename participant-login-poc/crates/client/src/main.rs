@@ -133,7 +133,7 @@ fn App(cx: Scope<'_>) -> Element<'_> {
         CurrentStatus::IrmaSessionDone => {
             match &status.irma_session_ptr{
                 Some(session_id) => {
-                    render! {IrmaSessionStatus{session_id: session_id.to_owned()}}
+                    render! {GetPEPtoken{session_id: session_id.to_owned()}}
                 }
                 None => {
                     cx.render(rsx!("Error: IRMA session ID not found"))
@@ -239,7 +239,7 @@ pub fn IrmaSessionStatus(cx: Scope<IrmaSessionId>)->Element{
                             cx.render(rsx!(div{"Login session cancelled, please try again."}))
                         }
                         IrmaSessionStatus::Done=>{
-                            println!("done");
+                            println!("done, updating status");
                             status.write().current_status=CurrentStatus::IrmaSessionDone;   //Go to next step
                             cx.render(rsx!(div{"Login session done, please wait while we log you in."})) //It's actually lying
                         }
