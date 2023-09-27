@@ -112,6 +112,12 @@ pub enum IrmaSessionStatus {
     NotFinished
 }
 
+#[derive(Deserialize)]
+struct TokenResponse{
+    token: Option<String>,
+    error: Option<String>
+}
+
 impl HttpClient {
     /// Creates a new HTTPS bin
     /// * `url` - The base URL to send the authentication request to. Must be PEP's authentication server's URL
@@ -187,6 +193,23 @@ impl HttpClient {
             Err(error) => {Err(GetStatusError{message: error.to_string()} )}
         }
 
+    }
+    
+    pub async fn get_pep_auth_token(&self, irma_session_ptr: String) -> Result<String, BoxedError> {
+        let response=reqwest::get((&self.url).to_owned()+"/token/" + &irma_session_ptr).await;
+        match response{
+            Ok(response)=>{
+                let token_response=response.text().await?;
+                let token_response: TokenResponse = serde_json::from_str(&token_response)?;
+                match token_response.token{
+                    Some(token)=>{Ok(token)},   //If it turns out that the client doesn't deserialize the manually created JSONs correctly, this is the place to easily fix that. Just add a check for the token being "none" and return an error. Or if you what to do it "The Right Way", check how a "None" value gets serialized by serde_json and modify that on the server
+                    None=>{Err(BoxedError{message: format!("Error getting PEP auth token: {}", token_response.error.unwrap_or("No error message".to_owned()))})}
+                }
+            }
+            Err(error)=>{
+                Err(BoxedError{message: error.to_string()})
+            }
+        }
     }
 
 }

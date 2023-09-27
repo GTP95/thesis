@@ -19,6 +19,7 @@ struct State {
     irma_session_id: Option<String>,
     http_client: HttpClient,
     current_status: CurrentStatus,
+    irma_session_ptr: Option<String>
 }
 
 struct Config {
@@ -115,6 +116,7 @@ fn App(cx: Scope<'_>) -> Element<'_> {
         irma_session_id: None,
         http_client: http_client,
         current_status: CurrentStatus::StartUp,
+        irma_session_ptr: None
     };
 
     use_shared_state_provider(cx, || status);
@@ -129,7 +131,15 @@ fn App(cx: Scope<'_>) -> Element<'_> {
             render! {Disclose{}}
         }
         CurrentStatus::IrmaSessionDone => {
-            render! {IrmaSessionStatus{session_id: String::from("TODO")}}
+            match &status.irma_session_ptr{
+                Some(session_id) => {
+                    render! {IrmaSessionStatus{session_id: session_id.to_owned()}}
+                }
+                None => {
+                    cx.render(rsx!("Error: IRMA session ID not found"))
+                }
+            }
+
         }
         CurrentStatus::Success => { cx.render(rsx!("Logged in")) }
         CurrentStatus::Error => { cx.render(rsx!("Error")) }
@@ -201,6 +211,7 @@ pub fn Disclose(cx: Scope) ->Element{
 pub fn IrmaSessionStatus(cx: Scope<IrmaSessionId>)->Element{
     let status = use_shared_state::<State>(cx).unwrap();
     let session_id= cx.props.session_id.clone();
+    status.write().irma_session_ptr=Some(session_id.clone()); //Store the session ID in the state so that I can use it to get PEP's token at the end of the session
 
     let future_irma_session_result = use_future(
         cx, (),
@@ -277,10 +288,30 @@ pub fn Qr(cx: Scope<QrCode>) -> Element {
 }
 
 #[allow(non_snake_case)] //UpperCamelCase isn't just a convention in Dioxus
-pub fn GetIRMAattribute(cx: Scope<SessionID>) -> Element {
-    cx.render(rsx!(div{
-        "TODO"
-    }))
+pub fn GetPEPtoken(cx: Scope<SessionID>) -> Element {
+    let status=use_shared_state::<State>(cx).unwrap();
+    let session_id = cx.props.session_id.clone();
+
+    let token=use_future(
+        cx, (),
+        {
+            to_owned![status];
+            move |_| async move { status.read().http_client.get_pep_auth_token(session_id).await }
+        },
+    ).value();
+
+    match token {
+        None => {
+            cx.render(rsx!(div{"Waiting for the server to respond..."}))
+        }
+        Some(Ok(token)) => {
+            cx.render(rsx!(div{"PEP token: {token}"}))
+        }
+        Some(Err(error)) => {
+            cx.render(rsx!(div{"Error, can't get the PEP token. Please try again later. If you would like to report this error, please include the following information: {error.to_string()}"}))
+        }
+    }
+
 }
 
 /**
