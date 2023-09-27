@@ -111,29 +111,9 @@ pub async fn irma_session_status(sessionptr: &str, irma_session_handler: &State<
 #[get("/token/<sessionptr>")]
 pub async fn irma_session_result(sessionptr: &str, irma_session_handler: &State<IrmaSessionHandler>, http_client: &State<HttpClient>) -> status::Custom<content::RawJson<String>> { //Maybe in this function I took error handling too far, I could have just called unwrap() when serializing as JSON as in this case errors aren't to be expected. In addition to this, an error would just crash the current thread, but another one should be created on subsequent calls. So I guess the worst case scenario would have been the client not getting an answer back. In addition to this, I'm not even sure that the JSONs I'm constructing manually would be deserialized correctly by the client. In the end, this function's a mess that might have been avoided. I'm sorry if you have to modify this function.
     let generic_error_text=String::from("An error occurred while getting the token. Additonally, another error occured while serializing the the response: ");
-    let session_token = serde_json::from_str(sessionptr);
-    let session_token = match session_token {
-        Ok(session_token) => session_token,
-        Err(error) => {
-            let token_response=TokenResponse{
-                token: None,
-                error: Some(error.to_string())
-            };
-            let json= match serde_json::to_string(&token_response){ //Try to serialize the TokenResponse struct
-                Ok(json)=>json,
-                Err(error)=>{   //If somehow serialization fails, construct it manually
-                    let json = json!({
-                        "token": "none",
-                        "error": generic_error_text + &error.to_string()
-                    }).to_string();
-                    return status::Custom(Status::InternalServerError, content::RawJson(json));
-                }
-            };
-            return status::Custom(Status::InternalServerError, content::RawJson(json));
-        }
-    };
-
+    let session_token = irma::SessionToken(sessionptr.to_string());
     let session_result = irma_session_handler.get_status(&session_token).await;
+
     match session_result {
         Ok(session_result) => {
             let uid = &session_result.disclosed[0][0].raw_value;
