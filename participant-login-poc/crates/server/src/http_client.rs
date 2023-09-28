@@ -1,4 +1,5 @@
 use std::fs::read;
+use log::debug;
 use rand::{Rng, SeedableRng};
 use rand::rngs::StdRng;
 use reqwest::{Error, redirect, Response};
@@ -30,7 +31,7 @@ impl HttpClient {
             .connection_verbose(true) //print verbose connection info for debugging
             .redirect(redirect::Policy::none())//Do not follow redirects, so that I can get the code without contacting localhost:16515/
             .http1_title_case_headers();    //case-sensitive headers. See https://github.com/seanmonstar/reqwest/discussions/1895#discussioncomment-6355126
-        let client= client_builder.build().expect("Error building HTTPS bin");
+        let client= client_builder.build().expect("Error building HTTPS client");
 
         HttpClient {
             client,
@@ -75,7 +76,10 @@ impl HttpClient {
             "code": code,
             "code_verifier": code_verifier
         });
-        self.client.post(token_endpoint).json(&request_body).send().await
+        //debug
+        let response=self.client.post(token_endpoint).json(&request_body).send().await;
+        debug!("PEP token response: {:?}", response);
+        response
     }
 
 }

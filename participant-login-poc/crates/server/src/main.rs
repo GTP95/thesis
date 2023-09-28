@@ -12,6 +12,7 @@ use rocket::response::{status, content};
 use serde::Serialize;
 use crate::http_client::HttpClient;
 use crate::irma_session_handler::{IrmaSessionHandler, RequestResult};
+use log::{debug, error, log_enabled, info, Level};
 
 #[derive(Debug)]
 struct Codes {
@@ -110,7 +111,7 @@ pub async fn irma_session_status(sessionptr: &str, irma_session_handler: &State<
     */
 #[get("/token/<sessionptr>")]
 pub async fn irma_session_result(sessionptr: &str, irma_session_handler: &State<IrmaSessionHandler>, http_client: &State<HttpClient>) -> status::Custom<content::RawJson<String>> { //Maybe in this function I took error handling too far, I could have just called unwrap() when serializing as JSON as in this case errors aren't to be expected. In addition to this, an error would just crash the current thread, but another one should be created on subsequent calls. So I guess the worst case scenario would have been the client not getting an answer back. In addition to this, I'm not even sure that the JSONs I'm constructing manually would be deserialized correctly by the client. In the end, this function's a mess that might have been avoided. I'm sorry if you have to modify this function.
-    let generic_error_text=String::from("An error occurred while getting the token. Additonally, another error occured while serializing the the response: ");
+    let generic_error_text=String::from("An error occurred while getting the token. Additionally, another error occurred while serializing the the response: ");
     let session_token = irma::SessionToken(sessionptr.to_string());
     let session_result = irma_session_handler.get_status(&session_token).await;
 
@@ -160,10 +161,10 @@ pub async fn irma_session_result(sessionptr: &str, irma_session_handler: &State<
                                     };
                                     status::Custom(Status::Ok, content::RawJson(json))
                                 },
-                                _ => {
+                                Err(error) => {
                                     let token_response=TokenResponse{
                                         token: None,
-                                        error: Some("Error getting token".to_string())
+                                        error: Some("Error getting token: ".to_string() + &error.to_string())
                                     };
                                     let json = match serde_json::to_string(&token_response){ //Try to serialize the TokenResponse struct
                                         Ok(json)=>json,
@@ -227,6 +228,9 @@ pub async fn irma_session_result(sessionptr: &str, irma_session_handler: &State<
 /**Rocket's entry point*/
 #[launch]
 fn rocket() -> _ {
+    //Set up logging
+    env_logger::init();
+
     //open and parse config.toml configuration file
     let config =
         fs::read_to_string("crates/server/config/config.toml").expect("Error reading config/config.toml file");
