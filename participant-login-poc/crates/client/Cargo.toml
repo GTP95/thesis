@@ -20,4 +20,6 @@ rand = "0.8.5"
 sha256 = "1.1.4"
 dioxus = "0.4.0"
 dioxus-desktop = "0.4.0"
+regex = "1.9.5"
+lazy_static = "1.4.0"
 

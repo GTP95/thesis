@@ -3,6 +3,8 @@ use log::debug;
 use rand::{Rng, SeedableRng};
 use rand::rngs::StdRng;
 use reqwest::{Error, redirect, Response};
+use rocket::figment::Provider;
+use rocket::futures::TryFutureExt;
 use serde_json::json;
 use sha256::digest;
 
@@ -29,7 +31,7 @@ impl HttpClient {
         reqwest::Certificate::from_pem(&buf).expect("Error parsing root CA certificate");
         let client_builder=reqwest::Client::builder()
             .connection_verbose(true) //print verbose connection info for debugging
-            .redirect(redirect::Policy::none())//Do not follow redirects, so that I can get the code without contacting localhost:16515/
+            //.redirect(redirect::Policy::none())//Do not follow redirects, so that I can get the code without contacting localhost:16515/
             .http1_title_case_headers();    //case-sensitive headers. See https://github.com/seanmonstar/reqwest/discussions/1895#discussioncomment-6355126
         let client= client_builder.build().expect("Error building HTTPS client");
 
@@ -71,12 +73,12 @@ impl HttpClient {
         let token_endpoint=self.url.to_owned()+"/token";
         let request_body=json!({
             "client_id": 123,
-            "redirect_uri": "http://localhost:16515",
+            "redirect_uri": "http://localhost:16515",   //this is actually ignored by PEP
             "grant_type": "authorization_code",
             "code": code,
             "code_verifier": code_verifier
         });
-        //debug
+
         let response=self.client.post(token_endpoint).json(&request_body).send().await;
         debug!("PEP token response: {:?}", response);
         response

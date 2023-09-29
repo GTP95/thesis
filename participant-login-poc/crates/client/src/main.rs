@@ -10,6 +10,8 @@ use dioxus::prelude::*;
 use irma::{SessionResult, SessionToken};
 use tera::Tera;
 use http_client::IrmaSessionStatus;
+use regex::Regex;
+use lazy_static::lazy_static;
 
 enum CurrentStatus { StartUp, Disclose, IrmaSessionDone, Success, Error }
 
@@ -308,7 +310,17 @@ pub fn GetPEPtoken(cx: Scope<SessionID>) -> Element {
             cx.render(rsx!(div{"PEP token: {token}"}))
         }
         Some(Err(error)) => {
-            cx.render(rsx!(div{"Error, can't get the PEP token. Please try again later. If you would like to report this error, please include the following information: {error.to_string()}"}))
+            if error.message.contains("http://127.0.0.1:16515/?code="){ //The error contains the token. This is not elegant, but is the way to go since I've got nothing listening to the URL I get redirected to and PEP doesn't let me specify a different URL for the redirection (if I do, it gets ignored)
+
+                let token=extract_token_from_error_message(&error.message);
+                cx.render(rsx!(div{"PEP token: {token}"}))
+
+
+            }
+            else {
+                cx.render(rsx!(div{"Error, can't get the PEP token. Please try again later. If you would like to report this error, please include the following information: {error.message}"}))
+            }
+
         }
     }
 
@@ -340,13 +352,15 @@ async fn get_status(session_id: &String, irma_session_handler: &IrmaSessionHandl
     irma_session_handler.get_status(&session_token).await
 }
 
-
-
-
-
-
-
-
-
-
-
+/**
+ * Extracts PEP's auth token from the error message returned when trying to follow the redirect to localhost:16515
+    * # Arguments
+    * * `error_message` - The error message
+ */
+fn extract_token_from_error_message(error_message: &str) -> String { //This can be made more robust against possible future changes of the error by writing a regex, but finding one that works can be tricky
+    let start=error_message.find("code=");
+    let end=error_message.find(")");
+    let result=&error_message[start.unwrap()+5..end.unwrap()];
+    println!("extracted token: {}", result);
+    result.to_string()
+}
