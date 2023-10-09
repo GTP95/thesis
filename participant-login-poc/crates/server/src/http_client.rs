@@ -2,7 +2,8 @@ use std::fs::read;
 use log::debug;
 use rand::{Rng, SeedableRng};
 use rand::rngs::StdRng;
-use reqwest::{Error, redirect, Response};
+use reqwest::{Error, redirect, Response, StatusCode};
+use reqwest::header::LOCATION;
 use rocket::figment::Provider;
 use rocket::futures::TryFutureExt;
 use serde_json::json;
@@ -31,7 +32,7 @@ impl HttpClient {
         reqwest::Certificate::from_pem(&buf).expect("Error parsing root CA certificate");
         let client_builder=reqwest::Client::builder()
             .connection_verbose(true) //print verbose connection info for debugging
-            //.redirect(redirect::Policy::none())//Do not follow redirects, so that I can get the code without contacting localhost:16515/
+            .redirect(redirect::Policy::none())//Do not follow redirects, so that I can get the code without contacting localhost:16515/
             .http1_title_case_headers();    //case-sensitive headers. See https://github.com/seanmonstar/reqwest/discussions/1895#discussioncomment-6355126
         let client= client_builder.build().expect("Error building HTTPS client");
 
@@ -45,7 +46,7 @@ impl HttpClient {
 
     /// Sends an authentication request to the server. Handles PEP's authentication flow.
     /// * `uid` - The user ID to send in the HTTP header
-    pub async fn send_auth_request(&self, uid: &str) -> Result<AuthResponse, reqwest::Error> {
+    pub async fn send_auth_request(&self, uid: &str) -> Result<AuthResponse, Box<dyn std::error::Error>> {
         // Use the ChaCha20 or ChaCha12 cipher as a pseudorandom number generator to generate a random string of 32 bytes
         // This gives a security level of 128 bits against collisions, so it's in line with the rest of PEP
         // It is subject to change, see https://docs.rs/rand/0.7.0/rand/rngs/struct.StdRng.html#impl-Rng
@@ -62,14 +63,27 @@ impl HttpClient {
             .body("")
             .send()
             .await?;
-        let result=AuthResponse {
-            code_verifier,
-            response
-        };
-        Ok(result)
+        //If the request is successful, I will get a Response containing a redirect status code and an header with the redirect URL. See https://github.com/seanmonstar/reqwest/discussions/1988#discussioncomment-7147102
+        match response.status() {
+            StatusCode::TEMPORARY_REDIRECT | StatusCode::PERMANENT_REDIRECT => {
+                let redirect_url=response.headers().get(LOCATION).unwrap().to_str().unwrap(); //Since it's a redirect, the header should be present so I'm not considering the case of a missing header. Also, it's 22:30 now. I'm also assuming it will contain a valid ASCII string, so I'm not handling the case in which it doesn't.
+                debug!("Redirect URL: {:?}", redirect_url);
+                let authorization_code=HttpClient::extract_code_from_redirect_url(redirect_url);
+                let token_response=self.get_token(&authorization_code, &code_verifier).await?;
+                debug!("Token response: {:?}", token_response);
+                Ok(AuthResponse{
+                    code_verifier,
+                    response: token_response
+                })
+            }
+            _ => {  //If the status code isn't a redirect, something went wrong
+                debug!("Unexpected response status code: {:?}", response.status());
+                Err(Box::try_from("Unexpected response status code").unwrap())
+            }
+        }
     }
 
-    pub async fn get_token(&self, code: &str, code_verifier: &[u8; 32])->Result<Response, Error>{
+    async fn get_token(&self, code: &str, code_verifier: &[u8; 32])->Result<Response, Error>{
         let token_endpoint=self.url.to_owned()+"/token";
         let request_body=json!({
             "client_id": 123,
@@ -82,6 +96,15 @@ impl HttpClient {
         let response=self.client.post(token_endpoint).json(&request_body).send().await;
         debug!("PEP token response: {:?}", response);
         response
+    }
+
+    fn extract_code_from_redirect_url(redirect_url: &str) -> String { //This can be made more robust against possible future changes of the error by writing a regex, but finding one that works can be tricky
+    debug!("Going to extract an authorization code from the following redirect url: {}", redirect_url);
+        let start= redirect_url.find("code=");
+        let end= redirect_url.len();
+        let result=&redirect_url[start.unwrap()+5..end];
+        debug!("extracted token: {}", result);
+        result.to_string()
     }
 
 }
