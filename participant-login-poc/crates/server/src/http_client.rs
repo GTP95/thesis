@@ -48,7 +48,7 @@ impl HttpClient {
     /// * `uid` - The user ID to send in the HTTP header
     pub async fn send_auth_request(&self, uid: &str) -> Result<AuthResponse, Box<dyn std::error::Error>> {
         let code_verifier=HttpClient::generate_code_verifier();
-        let code_challenge = digest(&code_verifier);   //TODO: ask about this: should I encode to BASE64 or not? the standard says yes, but the explanation not.
+        let code_challenge = base64_url::encode(&digest(&code_verifier));
         let auth_endpoint_url_with_params = self.url.to_owned() + "/auth?&user=" + uid + "&client_id=123&redirect_uri=http://127.0.0.1:16515/&response_type=code&code_challenge=" + &code_challenge + "&code_challenge_method=S256";
         let request = self.client
             .get(auth_endpoint_url_with_params)
