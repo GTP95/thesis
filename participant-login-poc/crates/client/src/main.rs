@@ -6,6 +6,7 @@ mod pepcli_wrapper;
 use crate::irma_session_handler::{IrmaSessionHandler, RequestResult};
 use crate::http_client::HttpClient;
 use std::fs;
+use dioxus::html::h2;
 use dioxus::prelude::*;
 use irma::{SessionResult, SessionToken};
 use log::debug;
@@ -23,7 +24,7 @@ struct State {
     current_status: CurrentStatus,
     irma_session_ptr: Option<String>,
     path_to_pepcli: String,
-    pepcli_wrapper: Option<PepCliWrapper>
+    pepcli_wrapper: Option<PepCliWrapper>,
 }
 
 struct Config {
@@ -86,10 +87,9 @@ fn App(cx: Scope<'_>) -> Element<'_> {
     let middleware_auth_server_address = config["middleware_auth_server_address"]
         .as_str()
         .expect("Error parsing auth_server_address from config/config.toml");
-    let path_to_pepcli=config["path_to_pepcli"]
+    let path_to_pepcli = config["path_to_pepcli"]
         .as_str()
         .expect("Error parsing path_to_pepcli from config/config.toml");
-
 
 
     //get spoof_check_secret from path_to_spoof_check_secret_file
@@ -126,7 +126,7 @@ fn App(cx: Scope<'_>) -> Element<'_> {
         current_status: CurrentStatus::StartUp,
         irma_session_ptr: None,
         path_to_pepcli: path_to_pepcli.to_string(),
-        pepcli_wrapper: None
+        pepcli_wrapper: None,
     };
 
     use_shared_state_provider(cx, || status);
@@ -141,7 +141,7 @@ fn App(cx: Scope<'_>) -> Element<'_> {
             render! {Disclose{}}
         }
         CurrentStatus::IrmaSessionDone => {
-            match &status.irma_session_ptr{
+            match &status.irma_session_ptr {
                 Some(session_id) => {
                     render! {GetPEPtoken{session_id: session_id.to_owned()}}
                 }
@@ -149,13 +149,11 @@ fn App(cx: Scope<'_>) -> Element<'_> {
                     cx.render(rsx!("Error: IRMA session ID not found"))
                 }
             }
-
         }
-        CurrentStatus::FileView => { render!{FileView{}} }
+        CurrentStatus::FileView => { render! {FileView{}} }
         CurrentStatus::Error => { cx.render(rsx!("Error")) }
     }
 }
-
 
 
 /**
@@ -166,7 +164,10 @@ fn App(cx: Scope<'_>) -> Element<'_> {
 #[allow(non_snake_case)] //UpperCamelCase isn't just a convention in Dioxus
 pub fn Startup(cx: Scope) -> Element {
     let status = use_shared_state::<State>(cx).unwrap();
-    cx.render(rsx!(button{
+    cx.render(rsx!(
+         h1 { "PEP PLA" }
+        h2{"PEP Participant Login Application"}
+        button{
                 onclick: move |event| status.write().current_status=CurrentStatus::Disclose,
                 "Login with Yivi app"
             }))
@@ -178,8 +179,7 @@ pub fn Startup(cx: Scope) -> Element {
  * * `cx` - The scope
  */
 #[allow(non_snake_case)] //UpperCamelCase isn't just a convention in Dioxus
-pub fn Disclose(cx: Scope) ->Element{
-
+pub fn Disclose(cx: Scope) -> Element {
     let status = use_shared_state::<State>(cx).unwrap();
     let qr_and_session_id = use_future(
         cx, (),
@@ -198,16 +198,15 @@ pub fn Disclose(cx: Scope) ->Element{
             let qr_code = &qr_and_session_id.qr_code;
             //status.write().current_status=CurrentStatus::Disclose;   //Go to next step
 
-            cx.render(rsx!{
-                Qr{qr: qr_code.to_string()},
-                IrmaSessionStatus{session_id: session_id.to_string()},
-            })
+            cx.render(rsx! {
+    Qr{qr: qr_code.to_string()},
+    IrmaSessionStatus{session_id: session_id.to_string()},
+    })
         }
         Some(Err(error)) => {
             cx.render(rsx!(div{"Error, can't get the QR code needed for authentication. Please try again later. If you would like to report this error, please include the following information: {error.to_string()}"}))
         }
     }
-
 }
 
 
@@ -219,9 +218,9 @@ pub fn Disclose(cx: Scope) ->Element{
  * * `session_id` - The session ID to get the status of
  */
 #[allow(non_snake_case)] //UpperCamelCase isn't just a convention in Dioxus
-pub fn IrmaSessionStatus(cx: Scope<IrmaSessionPtr>) ->Element{
+pub fn IrmaSessionStatus(cx: Scope<IrmaSessionPtr>) -> Element {
     let status = use_shared_state::<State>(cx).unwrap();
-    let session_id= cx.props.session_id.clone();
+    let session_id = cx.props.session_id.clone();
 
     status.write().irma_session_ptr = Some(session_id.clone()); //Store the session ID in the state so that I can use it to get PEP's token at the end of the session
 
@@ -242,20 +241,20 @@ pub fn IrmaSessionStatus(cx: Scope<IrmaSessionPtr>) ->Element{
             match irma_session_result {
                 Ok(session_status) => {
                     match session_status {
-                       IrmaSessionStatus::Timeout=>{
+                        IrmaSessionStatus::Timeout => {
                             debug!("timeout");
                             cx.render(rsx!(div{"Login session timed out, please try again."}))
                         }
-                        IrmaSessionStatus::Cancelled=>{
+                        IrmaSessionStatus::Cancelled => {
                             debug!("cancelled");
                             cx.render(rsx!(div{"Login session cancelled, please try again."}))
                         }
-                        IrmaSessionStatus::Done=>{
+                        IrmaSessionStatus::Done => {
                             debug!("done, updating status");
-                            status.write().current_status=CurrentStatus::IrmaSessionDone;   //Go to next step
+                            status.write().current_status = CurrentStatus::IrmaSessionDone;   //Go to next step
                             cx.render(rsx!(div{"Login session done, please wait while we log you in."})) //It's actually lying
                         }
-                        IrmaSessionStatus::NotFinished=> {
+                        IrmaSessionStatus::NotFinished => {
                             debug!("not finished");
                             future_irma_session_result.restart(); //Restart the future to poll again
                             cx.render(rsx!(div{"Please scan the QR code with the Yivi app."}))
@@ -271,11 +270,11 @@ pub fn IrmaSessionStatus(cx: Scope<IrmaSessionPtr>) ->Element{
                     cx.render(rsx!(div{"Error: {error.to_string()}"}))
                 }
             }
-
         }
-        dioxus::prelude::UseFutureState::Reloading(_)=> cx.render(rsx!(div{"Waiting for the IRMA login session to complete..."}))
+        dioxus::prelude::UseFutureState::Reloading(_) => cx.render(rsx!(div{"Waiting for the IRMA login session to complete..."}))
     }
 }
+
 /**
  * Dioxus component that renders the QR code containing the IRMA session pointer
  * # Arguments
@@ -285,7 +284,7 @@ pub fn IrmaSessionStatus(cx: Scope<IrmaSessionPtr>) ->Element{
 #[allow(non_snake_case)] //UpperCamelCase isn't just a convention in Dioxus
 pub fn Qr(cx: Scope<QrCode>) -> Element {
     let status = use_shared_state::<State>(cx).unwrap();
-    let qr =&cx.props.qr;
+    let qr = &cx.props.qr;
 
     let mut context = tera::Context::new();
     context.insert("Qr", qr);
@@ -294,17 +293,17 @@ pub fn Qr(cx: Scope<QrCode>) -> Element {
 
     cx.render(
         rsx!(div{
-                        dangerous_inner_html: "{html}"
-                    })
+    dangerous_inner_html: "{html}"
+    })
     )
 }
 
 #[allow(non_snake_case)] //UpperCamelCase isn't just a convention in Dioxus
 pub fn GetPEPtoken(cx: Scope<SessionID>) -> Element {
-    let status=use_shared_state::<State>(cx).unwrap();
+    let status = use_shared_state::<State>(cx).unwrap();
     let session_id = cx.props.session_id.clone();
 
-    let token=use_future(
+    let token = use_future(
         cx, (),
         {
             to_owned![status];
@@ -317,26 +316,22 @@ pub fn GetPEPtoken(cx: Scope<SessionID>) -> Element {
             cx.render(rsx!(div{"Waiting for the server to respond..."}))
         }
         Some(Ok(token)) => {
-            status.write().current_status=CurrentStatus::FileView;   //Go to next step
+            status.write().current_status = CurrentStatus::FileView;   //Go to next step
             cx.render(rsx!(div{"PEP token: {token}"}))
         }
         Some(Err(error)) => {
-
-                cx.render(rsx!(div{"Error, can't get the PEP token. Please try again later. If you would like to report this error, please include the following information: {error.message}"}))
-
-
+            cx.render(rsx!(div{"Error, can't get the PEP token. Please try again later. If you would like to report this error, please include the following information: {error.message}"}))
         }
     }
-
 }
 
 #[allow(non_snake_case)] //UpperCamelCase isn't just a convention in Dioxus
 pub fn FileView(cx: Scope) -> Element {
-    let status=use_shared_state::<State>(cx).unwrap();
-    let pepcli_wrapper=&status.read().pepcli_wrapper;
-    match pepcli_wrapper{
-        Some(pepcli_wrapper)=>{
-            let columns=pepcli_wrapper.get_columns();
+    let status = use_shared_state::<State>(cx).unwrap();
+    let pepcli_wrapper = &status.read().pepcli_wrapper;
+    match pepcli_wrapper {
+        Some(pepcli_wrapper) => {
+            let columns = pepcli_wrapper.get_columns();
             match columns {
                 Ok(columns) => {
                     debug!("Columns: {}", columns);
@@ -344,18 +339,17 @@ pub fn FileView(cx: Scope) -> Element {
                 }
                 Err(error) => {
                     debug!("Error getting columns: {}", error.to_string());
-                    status.write().current_status=CurrentStatus::Error;
+                    status.write().current_status = CurrentStatus::Error;
                     cx.render(rsx!(div{"Error: {error.to_string()}"}))  //this doesn't get rendered, as updating the status triggers a re-render that moves the app to the next state, that renders another thing
                 }
             }
         }
-        None=>{
+        None => {
             debug!("Error: no PepCliWrapper instance found");
-            status.write().current_status=CurrentStatus::Error;
+            status.write().current_status = CurrentStatus::Error;
             cx.render(rsx!(div{"Error: no PepCliWrapper instance found"}))  //this doesn't get rendered, as updating the status triggers a re-render that moves the app to the next state, that renders another thing
         }
     }
-
 }
 
 /**
@@ -385,15 +379,16 @@ async fn get_status(session_id: &String, irma_session_handler: &IrmaSessionHandl
 }
 
 /**
- * Extracts PEP's auth token from the error message returned when trying to follow the redirect to localhost:16515
-    * # Arguments
-    * * `error_message` - The error message
+* Extracts PEP's auth token from the error message returned when trying to follow the redirect to localhost:16515
+   * # Arguments
+   * * `error_message` - The error message
  */
-fn extract_token_from_error_message(error_message: &str) -> String { //This can be made more robust against possible future changes of the error by writing a regex, but finding one that works can be tricky
+fn extract_token_from_error_message(error_message: &str) -> String {
+    //This can be made more robust against possible future changes of the error by writing a regex, but finding one that works can be tricky
     debug!("Going to extract a token from the following error message: {}", error_message);
-    let start=error_message.find("code=");
-    let end=error_message.find(")");
-    let result=&error_message[start.unwrap()+5..end.unwrap()];
+    let start = error_message.find("code=");
+    let end = error_message.find(")");
+    let result = &error_message[start.unwrap() + 5..end.unwrap()];
     debug!("extracted token: {}", result);
     result.to_string()
 }

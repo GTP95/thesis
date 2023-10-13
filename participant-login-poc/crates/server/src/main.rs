@@ -17,7 +17,7 @@ use log::{debug, error, log_enabled, info, Level};
 #[derive(Debug)]
 struct Codes {
     code: String,
-    code_verifier: [u8; 32],
+    code_verifier: String,
 }
 
 /**
@@ -104,7 +104,7 @@ pub async fn irma_session_status(sessionptr: &str, irma_session_handler: &State<
 }
 
 /**
-    * Returns the PEP token for an IRMA session, if the attributes were disclosed successfully
+    * Returns PEP's OAuth token for an IRMA session, if the attributes were disclosed successfully
     * # Arguments
     * * `sessionptr` - The session pointer of the IRMA session
     * * `irma_session_handler` - The IRMA session handler to use to get the result
@@ -119,7 +119,7 @@ pub async fn irma_session_result(sessionptr: &str, irma_session_handler: &State<
         Ok(session_result) => {
             let uid = &session_result.disclosed[0][0].raw_value;
             match uid {
-                None => {
+                None => {   //No UID in this case
                     let token_response=TokenResponse{
                         token: None,
                         error: Some("No UID disclosed".to_string())
@@ -136,49 +136,27 @@ pub async fn irma_session_result(sessionptr: &str, irma_session_handler: &State<
                     };
                     return status::Custom(Status::InternalServerError, content::RawJson(json));
                 }
-                Some(uid) => {
-                    let pep_codes = request_code_for_token(uid, &http_client).await;
-                    match pep_codes {
-                        Ok(pep_codes)=>{
-                            println!("PEP codes: {:?}", pep_codes);
-                            let code=pep_codes.code;
-                            let code_verifier=pep_codes.code_verifier;
-                            return match http_client.get_token(&code, &code_verifier).await {
-                                Ok(response)=>{
-                                    let token_response=TokenResponse{
-                                        token: Some(response.text().await.unwrap()),
-                                        error: None
-                                    };
-                                    let json=match serde_json::to_string(&token_response){ //Try to serialize the TokenResponse struct
-                                        Ok(json)=>json,
-                                        Err(error)=>{   //If somehow serialization fails, construct it manually
-                                            let json = json!({
-                                                "token": token_response.token.unwrap(),
-                                                "error": generic_error_text + &error.to_string()
-                                            }).to_string();
-                                            return status::Custom(Status::InternalServerError, content::RawJson(json));
-                                        }
-                                    };
-                                    status::Custom(Status::Ok, content::RawJson(json))
-                                },
-                                Err(error) => {
-                                    let token_response=TokenResponse{
-                                        token: None,
-                                        error: Some("Error getting token: ".to_string() + &error.to_string())
-                                    };
-                                    let json = match serde_json::to_string(&token_response){ //Try to serialize the TokenResponse struct
-                                        Ok(json)=>json,
-                                        Err(error)=>{   //If somehow serialization fails, construct it manually
-                                            let json = json!({
-                                                "token": "none",
-                                                "error": generic_error_text + &error.to_string()
-                                            }).to_string();
-                                            return status::Custom(Status::InternalServerError, content::RawJson(json));
-                                        }
-                                    };
-                                    status::Custom(Status::InternalServerError, content::RawJson(json))
+                Some(uid) => {  //We've got an UID, we can request the code and then the token
+                    let auth_response =http_client.send_auth_request(uid).await;
+                    match auth_response {
+                        Ok(response)=>{
+                            let token=response.response; //TODO: I have to figure out how to extract the token from the response
+                            debug!("Reqwest's response containing the token: {:?}", token);
+                            let token_response=TokenResponse{
+                                token: Some(String::from("Here's the token")),
+                                error: None
+                            };
+                            let json=match serde_json::to_string(&token_response){ //Try to serialize the TokenResponse struct
+                                Ok(json)=>json,
+                                Err(error)=>{   //If somehow serialization fails, construct it manually
+                                    let json = json!({
+                                        "token": Some(String::from("Here's the token")),
+                                        "error": generic_error_text + &error.to_string()
+                                    }).to_string();
+                                    return status::Custom(Status::InternalServerError, content::RawJson(json));
                                 }
-                            }
+                            };
+                            return status::Custom(Status::Ok, content::RawJson(json));
                         },
                         Err(error)=>{
                             let token_response=TokenResponse{
@@ -294,6 +272,7 @@ async fn irma_disclose_id(irma_session_handler: &IrmaSessionHandler) -> Result<R
 * * `uid_field_name` - The name of the HTTP header that contains the user ID
 * * `client` - The HTTP client to use to send the request
  */
+#[deprecated (note="Use HttpClient::send_auth_request")]
 async fn request_code_for_token(user_id: &str, client: &HttpClient) -> CodeResult<Codes> {
     let auth_response = client
         .send_auth_request(&String::from(user_id))

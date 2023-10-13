@@ -2,3 +2,4 @@ path_to_spoof_check_secret_file = '/home/giacomo/VirtualBox VMs/Cartella di pass
 path_to_root_ca_certificate='/home/giacomo/VirtualBox VMs/Cartella di passaggio/rootCA.cert'  #Needed for HTTPS conection with PEP's auth server, as the test environment uses self-signed certs
 uid_field_name= 'uid'
 middleware_auth_server_address= 'http://localhost:8000'
+path_to_pepcli= 'resources/pepcli'
