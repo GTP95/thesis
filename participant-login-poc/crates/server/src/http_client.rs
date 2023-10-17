@@ -87,7 +87,7 @@ impl HttpClient {
      //       "code": code,
      //       "code_verifier": code_verifier
      //   });
-       //Using reqwest's way of constructing JSONs, because when using Serde the request was failing
+       //Using reqwest's way of constructing JSONs, because when using Serde the request was failing. The problem turend out to be something else, but leaving it like this since it works
       let mut request_body = HashMap::new();
         request_body.insert("client_id", "123");
            request_body.insert("redirect_uri", "http://localhost:16515");
@@ -97,20 +97,32 @@ impl HttpClient {
 
         debug!("PEP token request body: {:?}", request_body);
 
-        let request = self.client.post(token_endpoint)
-            .header("Shib-Spoof-Check", &self.spoof_check_secret)
-            .header(self.uid_field_name.clone(), uid)
-            .json(&request_body);
-        debug!("PEP token request: {:?}", request);
+
+        //the request gets interrupted, so I'll write it in a loop to retry it
+        let mut failures=0;
+        loop{
+            let request = self.client.post(&token_endpoint)
+                .header("Shib-Spoof-Check", &self.spoof_check_secret)
+                .header(self.uid_field_name.clone(), uid)
+                .json(&request_body);
+            debug!("PEP token request: {:?}", request);
             let response=request.send().await;
-       //let response=self.client.post(token_endpoint)
-       //    .header("Shib-Spoof-Check", &self.spoof_check_secret)
-       //    .header(self.uid_field_name.clone(), "testuser")
-       //    .json(&request_body)
-       //    .send()
-       //    .await;
-        debug!("PEP token response: {:?}", response);
-        response
+            match response {
+                Ok(response) => {
+                    debug!("PEP token response: {:?}", response);
+                  //  let response_text=response.text().await.unwrap_or("Couldn't get response's text".to_string());
+                  //  debug!("Pepe token response's text: {response_text}");
+                    return Ok(response);
+                }
+                Err(error) => {
+                    debug!("Error sending token request: {:?}", error);
+                    failures+=1;
+                    if failures>10{
+                        return Err(error);
+                    }
+                }
+            }
+        }
     }
 
     fn extract_code_from_redirect_url(redirect_url: &str) -> String {

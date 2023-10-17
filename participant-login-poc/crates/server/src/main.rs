@@ -13,6 +13,7 @@ use serde::Serialize;
 use crate::http_client::HttpClient;
 use crate::irma_session_handler::{IrmaSessionHandler, RequestResult};
 use log::{debug, error, log_enabled, info, Level};
+use rocket::futures::TryFutureExt;
 
 #[derive(Debug)]
 struct Codes {
@@ -140,8 +141,8 @@ pub async fn irma_session_result(sessionptr: &str, irma_session_handler: &State<
                     let auth_response =http_client.send_auth_request(uid).await;
                     match auth_response {
                         Ok(response)=>{
-                            let token=response.response; //TODO: I have to figure out how to extract the token from the response
-                            debug!("Reqwest's response containing the token: {:?}", token);
+                            let token_response =response.response; //TODO: I have to figure out how to extract the token from the response
+                            debug!("Reqwest's response containing the token: {:?}", token_response);
                             let token_response=TokenResponse{
                                 token: Some(String::from("Here's the token")),
                                 error: None
