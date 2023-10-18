@@ -1,5 +1,6 @@
 use std::fmt;
 use std::fs::read;
+use log::debug;
 use reqwest::redirect;
 use serde::{Deserialize, Serialize};
 
@@ -199,7 +200,8 @@ impl HttpClient {
         let response=reqwest::get((&self.url).to_owned()+"/token/" + &irma_session_ptr).await;
         match response{
             Ok(response)=>{
-                let token_response=response.text().await?;
+                let token_response=response.text().await?;  //This is the body of the response to the POST request to the /token endpoint, as text.
+                debug!("token_response: {token_response}");
                 let token_response: TokenResponse = serde_json::from_str(&token_response)?;
                 match token_response.token{
                     Some(token)=>{Ok(token)},   //If it turns out that the client doesn't deserialize the manually created JSONs correctly, this is the place to easily fix that. Just add a check for the token being "none" and return an error. Or if you what to do it "The Right Way", check how a "None" value gets serialized by serde_json and modify that on the server

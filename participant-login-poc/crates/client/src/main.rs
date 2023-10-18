@@ -315,8 +315,8 @@ pub fn GetPEPtoken(cx: Scope<SessionID>) -> Element {
         None => {
             cx.render(rsx!(div{"Waiting for the server to respond..."}))
         }
-        Some(Ok(token)) => {
-            status.write().current_status = CurrentStatus::FileView;   //Go to next step
+        Some(Ok(token)) => {    //TODO: this is the place to create an instance of PepcliWrapper
+            //status.write().current_status = CurrentStatus::FileView;   //Go to next step
             cx.render(rsx!(div{"PEP token: {token}"}))
         }
         Some(Err(error)) => {

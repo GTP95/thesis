@@ -6,6 +6,7 @@ use reqwest::{Error, redirect, Response, StatusCode};
 use reqwest::header::LOCATION;
 use rocket::figment::Provider;
 use rocket::futures::TryFutureExt;
+use serde::Deserialize;
 use serde_json::json;
 use sha256::digest;
 
@@ -21,6 +22,12 @@ pub struct AuthResponse {
     pub response: reqwest::Response,
 }
 
+#[derive(Deserialize)]
+struct TokenResponse{
+    access_token: String,
+    token_type: String,
+    expires_in: String  //This could have been a number, but the server is sending it as a string. I guess this is what happens when you use C++
+}
 impl HttpClient {
     /// Creates a new HTTPS client.
     /// * `url` - The base URL to send the authentication request to. Must be PEP's authentication server's URL
@@ -46,7 +53,8 @@ impl HttpClient {
 
     /// Sends an authentication request to the server. Handles PEP's authentication flow.
     /// * `uid` - The user ID to send in the HTTP header
-    pub async fn send_auth_request(&self, uid: &str) -> Result<AuthResponse, Box<dyn std::error::Error>> {
+    /// Returns PEP's OAuth token. In the future it could also return the token's type and expiration
+    pub async fn send_auth_request(&self, uid: &str) -> Result<String, Box<dyn std::error::Error>> {
         let code_verifier=HttpClient::generate_code_verifier();
         debug!("Code verifier: {code_verifier}");
         let sha256_code_verifier=digest(&code_verifier);
@@ -79,13 +87,12 @@ impl HttpClient {
             //Since it's a redirect, the header should be present so I'm not considering the case of a missing header. Also, it's 22:30 now. I'm also assuming it will contain a valid ASCII string, so I'm not handling the case in which it doesn't.
             debug!("Redirect URL: {:?}", redirect_url);
             let authorization_code = HttpClient::extract_code_from_redirect_url(redirect_url);
-            let token_response = self.get_token(&authorization_code, &code_verifier, uid).await?;
+            let token_response_body = self.get_token(&authorization_code, &code_verifier, uid).await?.text().await?;
            // let token_response_text=token_response.text().await?;
            // debug!("Token response text: {token_response_text}");   //This is the body of the response to the POST request to the /token endpoint, as text.
-            Ok(AuthResponse {
-                code_verifier,
-                response: token_response,
-            })
+            debug!("Token response body: {token_response_body}");
+            let json: TokenResponse=serde_json::from_str(&token_response_body)?;
+            Ok(json.access_token)
         } else {
             //If the status code isn't a redirect, something went wrong
             debug!("Unexpected response status code: {:?}", response.status());

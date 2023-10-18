@@ -141,17 +141,17 @@ pub async fn irma_session_result(sessionptr: &str, irma_session_handler: &State<
                     let auth_response =http_client.send_auth_request(uid).await;
                     match auth_response {
                         Ok(response)=>{
-                            let token_response =response.response; //TODO: I have to figure out how to extract the token from the response
-                            debug!("Reqwest's response containing the token: {:?}", token_response);
+                            let token =response;
+                            //debug!("Reqwest's response containing the token: {:?}", token_response);
                             let token_response=TokenResponse{
-                                token: Some(String::from("Here's the token")),
+                                token: Some(token.clone()), //I need to clone it, so that I can reuse it if I need to construct the JSON manually
                                 error: None
                             };
                             let json=match serde_json::to_string(&token_response){ //Try to serialize the TokenResponse struct
                                 Ok(json)=>json,
                                 Err(error)=>{   //If somehow serialization fails, construct it manually
                                     let json = json!({
-                                        "token": Some(String::from("Here's the token")),
+                                        "token": Some(token),
                                         "error": generic_error_text + &error.to_string()
                                     }).to_string();
                                     return status::Custom(Status::InternalServerError, content::RawJson(json));
@@ -265,48 +265,6 @@ async fn irma_disclose_id(irma_session_handler: &IrmaSessionHandler) -> Result<R
 
 
 
-/** Sends an HTTP request to PEP's auth server containing the headers with the disclosed attribute
-* # Arguments
-* * `server_address` - The base URL of the PEP auth server
-* * `user_id` - The user ID to send in the HTTP header
-* * `spoof_check_secret` - The secret to use for the Shibboleth spoof check
-* * `uid_field_name` - The name of the HTTP header that contains the user ID
-* * `client` - The HTTP client to use to send the request
- */
-#[deprecated (note="Use HttpClient::send_auth_request")]
-async fn request_code_for_token(user_id: &str, client: &HttpClient) -> CodeResult<Codes> {
-    let auth_response = client
-        .send_auth_request(&String::from(user_id))
-        .await;
-    match auth_response{
-        Ok(auth_response)=>{
-            let redirect_url = auth_response.response.headers()["location"].to_str();
-            match redirect_url{
-                Ok(redirect_url)=>{
-                    let code_verifier = auth_response.code_verifier;
-                    let code = redirect_url.split('=').collect::<Vec<&str>>()[1].to_owned();
-
-                    let result = Codes {
-                        code,
-                        code_verifier,
-                    };
-                    Ok(result)
-                }
-                Err(e)=>{
-                    Err(GetCodesError {
-                        message: e.to_string(),
-                    })
-                }
-            }
-
-        }
-        Err(error)=>{
-            Err(GetCodesError {
-                message: error.to_string(),
-            })
-        }
-    }
-}
 
 
 
