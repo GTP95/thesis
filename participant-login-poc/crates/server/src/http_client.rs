@@ -48,8 +48,22 @@ impl HttpClient {
     /// * `uid` - The user ID to send in the HTTP header
     pub async fn send_auth_request(&self, uid: &str) -> Result<AuthResponse, Box<dyn std::error::Error>> {
         let code_verifier=HttpClient::generate_code_verifier();
-        let code_challenge = base64_url::encode(&digest(&code_verifier));
+        debug!("Code verifier: {code_verifier}");
+        let sha256_code_verifier=digest(&code_verifier);
+        debug!("SHA256(code_verifier): {sha256_code_verifier}");
+
+        /*The digest library outputs SHA256 as an HEX string, while instead PEP's function outputs bytes
+        (even though the function's signature says it outputs a string, I will report this)
+        So I need to convert back the result to bytes before computing the BASE64-URL-ENCODING, otherwise
+        the result won't match PEP's result and the auth's server check will fail.
+        */
+        let sha256_code_verifier_as_bytes=hex::decode(sha256_code_verifier)?;
+
+        let code_challenge = base64_url::encode(&sha256_code_verifier_as_bytes);
+        debug!("Code challenge: {code_challenge}");
+
         let auth_endpoint_url_with_params = self.url.to_owned() + "/auth?&user=" + uid + "&client_id=123&redirect_uri=http://127.0.0.1:16515/&response_type=code&code_challenge=" + &code_challenge + "&code_challenge_method=S256";
+
         let request = self.client
             .get(auth_endpoint_url_with_params)
             .header("Shib-Spoof-Check", &self.spoof_check_secret)
@@ -66,7 +80,8 @@ impl HttpClient {
             debug!("Redirect URL: {:?}", redirect_url);
             let authorization_code = HttpClient::extract_code_from_redirect_url(redirect_url);
             let token_response = self.get_token(&authorization_code, &code_verifier, uid).await?;
-            debug!("Token response: {:?}", token_response);
+           // let token_response_text=token_response.text().await?;
+           // debug!("Token response text: {token_response_text}");   //This is the body of the response to the POST request to the /token endpoint, as text.
             Ok(AuthResponse {
                 code_verifier,
                 response: token_response,
@@ -80,22 +95,18 @@ impl HttpClient {
 
     async fn get_token(&self, code: &str, code_verifier: &str, uid: &str) -> Result<Response, Error> {
         let token_endpoint = self.url.to_owned() + "/token";
-     //   let request_body = json!({
-     //       "client_id": "123",
-     //       "redirect_uri": "http://localhost:16515",   //this is actually ignored by PEP
-     //       "grant_type": "authorization_code",
-     //       "code": code,
-     //       "code_verifier": code_verifier
-     //   });
-       //Using reqwest's way of constructing JSONs, because when using Serde the request was failing. The problem turend out to be something else, but leaving it like this since it works
-      let mut request_body = HashMap::new();
+
+        let mut request_body = HashMap::new();
         request_body.insert("client_id", "123");
-           request_body.insert("redirect_uri", "http://localhost:16515");
+           request_body.insert("redirect_uri", "http://127.0.0.1:16515/");
            request_body.insert("grant_type", "authorization_code");
            request_body.insert("code", code);
            request_body.insert("code_verifier", code_verifier);
 
-        debug!("PEP token request body: {:?}", request_body);
+        debug!("PEP token request body (not form-url-encoded yet: {:?}", request_body);
+
+
+
 
 
         //the request gets interrupted, so I'll write it in a loop to retry it
@@ -104,7 +115,7 @@ impl HttpClient {
             let request = self.client.post(&token_endpoint)
                 .header("Shib-Spoof-Check", &self.spoof_check_secret)
                 .header(self.uid_field_name.clone(), uid)
-                .json(&request_body);
+                .form(&request_body);   //The server is expecting the parameters inside a body in URL-encoded form
             debug!("PEP token request: {:?}", request);
             let response=request.send().await;
             match response {
@@ -118,6 +129,7 @@ impl HttpClient {
                     debug!("Error sending token request: {:?}", error);
                     failures+=1;
                     if failures>10{
+                        debug!("Too many errors trying to POST to /token, giving up");
                         return Err(error);
                     }
                 }
