@@ -41,6 +41,7 @@ impl fmt::Display for GetCodesError {
 #[derive(Serialize)]
 struct TokenResponse{
     token: Option<String>,
+    irma_attribute: Option<String>,
     error: Option<String>
 }
 
@@ -123,6 +124,7 @@ pub async fn irma_session_result(sessionptr: &str, irma_session_handler: &State<
                 None => {   //No UID in this case
                     let token_response=TokenResponse{
                         token: None,
+                        irma_attribute: None,
                         error: Some("No UID disclosed".to_string())
                     };
                     let json= match serde_json::to_string(&token_response){ //Try to serialize the TokenResponse struct
@@ -130,6 +132,7 @@ pub async fn irma_session_result(sessionptr: &str, irma_session_handler: &State<
                         Err(error)=>{   //If somehow serialization fails, construct it manually
                             let json = json!({
                                 "token": "none",
+                                "irma_attribute": "none",
                                 "error": generic_error_text + &error.to_string()
                             }).to_string();
                             return status::Custom(Status::InternalServerError, content::RawJson(json));
@@ -145,6 +148,7 @@ pub async fn irma_session_result(sessionptr: &str, irma_session_handler: &State<
                             //debug!("Reqwest's response containing the token: {:?}", token_response);
                             let token_response=TokenResponse{
                                 token: Some(token.clone()), //I need to clone it, so that I can reuse it if I need to construct the JSON manually
+                                irma_attribute: Some(uid.to_string()),
                                 error: None
                             };
                             let json=match serde_json::to_string(&token_response){ //Try to serialize the TokenResponse struct
@@ -152,6 +156,7 @@ pub async fn irma_session_result(sessionptr: &str, irma_session_handler: &State<
                                 Err(error)=>{   //If somehow serialization fails, construct it manually
                                     let json = json!({
                                         "token": Some(token),
+                                        "irma_attribute":Some(uid.to_string()),
                                         "error": generic_error_text + &error.to_string()
                                     }).to_string();
                                     return status::Custom(Status::InternalServerError, content::RawJson(json));
@@ -162,6 +167,7 @@ pub async fn irma_session_result(sessionptr: &str, irma_session_handler: &State<
                         Err(error)=>{
                             let token_response=TokenResponse{
                                 token: None,
+                                irma_attribute: Some(uid.to_string()),
                                 error: Some(error.to_string())
                             };
                             let json = match serde_json::to_string(&token_response){ //Try to serialize the TokenResponse struct
@@ -169,6 +175,7 @@ pub async fn irma_session_result(sessionptr: &str, irma_session_handler: &State<
                                 Err(error)=>{   //If somehow serialization fails, construct it manually
                                     let json = json!({
                                         "token": "none",
+                                        "irma_attribute": Some(uid.to_string()),
                                         "error": generic_error_text + &error.to_string()
                                     }).to_string();
                                     return status::Custom(Status::InternalServerError, content::RawJson(json));
@@ -187,6 +194,7 @@ pub async fn irma_session_result(sessionptr: &str, irma_session_handler: &State<
         Err(error) => {
             let token_response=TokenResponse{
                 token: None,
+                irma_attribute: None,
                 error: Some(error.to_string())
             };
             let json=match serde_json::to_string(&token_response){ //Try to serialize the TokenResponse struct
@@ -194,6 +202,7 @@ pub async fn irma_session_result(sessionptr: &str, irma_session_handler: &State<
                 Err(error)=>{   //If somehow serialization fails, construct it manually
                     let json = json!({
                         "token": "none",
+                        "irma_attribute": "none",
                         "error": generic_error_text + &error.to_string()
                     }).to_string();
                     return status::Custom(Status::InternalServerError, content::RawJson(json));

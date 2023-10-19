@@ -116,7 +116,13 @@ pub enum IrmaSessionStatus {
 #[derive(Deserialize)]
 struct TokenResponse{
     token: Option<String>,
+    irma_attribute: Option<String>,
     error: Option<String>
+}
+
+pub(crate) struct TokenAndAttribute {
+    pub(crate) token: String,
+    pub(crate) irma_attribute: String
 }
 
 impl HttpClient {
@@ -196,17 +202,28 @@ impl HttpClient {
 
     }
     
-    pub async fn get_pep_auth_token(&self, irma_session_ptr: String) -> Result<String, BoxedError> {
+    ///Asks the middleware for PEP's OAuth token. It also returns the disclosed IRMA attribute
+    /// The client needs the IRMA attribute to know the participant group's name
+    pub(crate) async fn get_pep_auth_token(&self, irma_session_ptr: String) -> Result<TokenAndAttribute, BoxedError> {
         let response=reqwest::get((&self.url).to_owned()+"/token/" + &irma_session_ptr).await;
         match response{
             Ok(response)=>{
                 let token_response=response.text().await?;  //This is the body of the response to the POST request to the /token endpoint, as text.
                 debug!("token_response: {token_response}");
                 let token_response: TokenResponse = serde_json::from_str(&token_response)?;
-                match token_response.token{
-                    Some(token)=>{Ok(token)},   //If it turns out that the client doesn't deserialize the manually created JSONs correctly, this is the place to easily fix that. Just add a check for the token being "none" and return an error. Or if you what to do it "The Right Way", check how a "None" value gets serialized by serde_json and modify that on the server
-                    None=>{Err(BoxedError{message: format!("Error getting PEP auth token: {}", token_response.error.unwrap_or("No error message".to_owned()))})}
+                //If it turns out that the client doesn't deserialize the manually created JSONs correctly, this is the place to easily fix that. Just add a check for the token being "none" and return an error. Or if you what to do it "The Right Way", check how a "None" value gets serialized by serde_json and modify that on the server
+                if token_response.token.is_some() && token_response.irma_attribute.is_some(){
+                    Ok(
+                        TokenAndAttribute{
+                            token: token_response.token.unwrap(),   //It is safe calling unwrap here, as I checked that the value is there
+                            irma_attribute: token_response.irma_attribute.unwrap()
+                        }
+                    )
                 }
+                else {
+                    Err(BoxedError{message: format!("Error getting PEP auth token: {}", token_response.error.unwrap_or("No error message".to_owned()))})
+                }
+
             }
             Err(error)=>{
                 Err(BoxedError{message: error.to_string()})

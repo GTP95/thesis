@@ -312,7 +312,7 @@ pub fn GetPEPtoken(cx: Scope<SessionID>) -> Element {
     let status = use_shared_state::<State>(cx).unwrap();
     let session_id = cx.props.session_id.clone();
 
-    let token = use_future(
+    let response = use_future(
         cx, (),
         {
             to_owned![status];
@@ -320,17 +320,17 @@ pub fn GetPEPtoken(cx: Scope<SessionID>) -> Element {
         },
     ).value();
 
-    match token {
+    match response {
         None => {
             cx.render(rsx!(div{"Waiting for the server to respond..."}))
         }
-        Some(Ok(token)) => {    //TODO: this is the place to create an instance of PepcliWrapper
+        Some(Ok(token_and_attribute)) => {    //TODO: this is the place to create an instance of PepcliWrapper
             let  mut writable_status=status.write();
             if writable_status.pepcli_wrapper.is_none(){
-                writable_status.pepcli_wrapper=Some(PepCliWrapper::new(writable_status.path_to_pepcli.clone(), token.to_string()));
+                writable_status.pepcli_wrapper=Some(PepCliWrapper::new(writable_status.path_to_pepcli.clone(), token_and_attribute.token.clone(), token_and_attribute.irma_attribute.clone()));
             }
             writable_status.current_status = CurrentStatus::FileView;   //Go to next step
-            cx.render(rsx!(div{"PEP token: {token}"}))
+            cx.render(rsx!(div{"If you're seeing this, something went wrong. You can drop an email to support@pep.cs.ru.nl about what happened."}))    //This should never get rendered, as updating the status triggers a re-render that moves the app to the next state
         }
         Some(Err(error)) => {
             cx.render(rsx!(div{"Error, can't get the PEP token. Please try again later. If you would like to report this error, please include the following information: {error.message}"}))
@@ -344,14 +344,14 @@ pub fn FileView(cx: Scope) -> Element {
     let pepcli_wrapper = &status.read().pepcli_wrapper;
     match pepcli_wrapper {
         Some(pepcli_wrapper) => {
-            let columns = pepcli_wrapper.get_columns();
-            match columns {
-                Ok(columns) => {
-                    debug!("Columns: {}", columns);
-                    cx.render(rsx!(div{"Columns: {columns}"}))
+            let available_files = pepcli_wrapper.get_file_list();
+            match available_files {
+                Ok(files) => {
+                    debug!("Files: {}", files);
+                    cx.render(rsx!(div{"Files: {files}"}))
                 }
                 Err(error) => {
-                    debug!("Error getting columns: {}", error.to_string());
+                    debug!("Error getting files: {}", error.to_string());
                     status.write().current_status = CurrentStatus::Error(error.to_string());
                     cx.render(rsx!(div{"Error: {error.to_string()}"}))  //this doesn't get rendered, as updating the status triggers a re-render that moves the app to the next state, that renders another thing
                 }
