@@ -6,7 +6,7 @@ mod pepcli_wrapper;
 use crate::irma_session_handler::{IrmaSessionHandler, RequestResult};
 use crate::http_client::HttpClient;
 use std::fs;
-use dioxus::html::h2;
+use dioxus::html::{h1, h2};
 use dioxus::prelude::*;
 use irma::{SessionResult, SessionToken};
 use log::debug;
@@ -14,7 +14,7 @@ use tera::Tera;
 use http_client::IrmaSessionStatus;
 use pepcli_wrapper::PepCliWrapper;
 
-enum CurrentStatus { StartUp, Disclose, IrmaSessionDone, FileView, Error }
+enum CurrentStatus { StartUp, Disclose, IrmaSessionDone, FileView, Error(String) }
 
 struct State {
     config: Config,
@@ -53,6 +53,11 @@ pub struct QrCode {
 #[derive(PartialEq, Props)]
 pub struct SessionID {
     session_id: String,
+}
+
+#[derive(PartialEq, Props)]
+pub struct Error {
+    error_message: String,
 }
 
 
@@ -133,7 +138,7 @@ fn App(cx: Scope<'_>) -> Element<'_> {
 
     let status = use_shared_state::<State>(cx).unwrap().read();  //Get a new reference since I lost ownership by calling use_shared_state_provider
 
-    match status.current_status {
+    match &status.current_status {
         CurrentStatus::StartUp => {
             render! {Startup{ }}
         }
@@ -151,7 +156,10 @@ fn App(cx: Scope<'_>) -> Element<'_> {
             }
         }
         CurrentStatus::FileView => { render! {FileView{}} }
-        CurrentStatus::Error => { cx.render(rsx!("Error")) }
+        CurrentStatus::Error(error_message) => {
+
+            render! {Error{error_message: error_message.to_string()}}
+        }
     }
 }
 
@@ -204,7 +212,8 @@ pub fn Disclose(cx: Scope) -> Element {
     })
         }
         Some(Err(error)) => {
-            cx.render(rsx!(div{"Error, can't get the QR code needed for authentication. Please try again later. If you would like to report this error, please include the following information: {error.to_string()}"}))
+            status.write().current_status = CurrentStatus::Error(error.to_string());
+            cx.render(rsx!(div{"Error, can't get the QR code needed for authentication. Please try again later. If you would like to report this error, please include the following information: {error.to_string()}"}))   //This will not get rendered, as updating the status triggers a re-render
         }
     }
 }
@@ -343,17 +352,29 @@ pub fn FileView(cx: Scope) -> Element {
                 }
                 Err(error) => {
                     debug!("Error getting columns: {}", error.to_string());
-                    status.write().current_status = CurrentStatus::Error;
+                    status.write().current_status = CurrentStatus::Error(error.to_string());
                     cx.render(rsx!(div{"Error: {error.to_string()}"}))  //this doesn't get rendered, as updating the status triggers a re-render that moves the app to the next state, that renders another thing
                 }
             }
         }
         None => {
             debug!("Error: no PepCliWrapper instance found");
-            status.write().current_status = CurrentStatus::Error;
+            status.write().current_status = CurrentStatus::Error("No PepCliWrapper instance found".to_string());
             cx.render(rsx!(div{"Error: no PepCliWrapper instance found"}))  //this doesn't get rendered, as updating the status triggers a re-render that moves the app to the next state, that renders another thing
         }
     }
+}
+
+#[allow(non_snake_case)] //UpperCamelCase isn't just a convention in Dioxus
+pub fn Error(cx: Scope<Error>) -> Element {
+    let error_message = &cx.props.error_message;
+    cx.render(rsx!(
+        h1{"Error"}
+        div{"An error occurred, you can report it to the PEP team by sending an email to \
+         support@pep.cs.ru.nl. Please include in your report the following error message:"}
+        div{"{error_message}"}
+
+    ))
 }
 
 /**
