@@ -4,6 +4,8 @@ use std::process::Command;
 use std::string::FromUtf8Error;
 use log::debug;
 use tempfile::tempdir;
+use regex;
+
 
 ///
 pub struct PepCliWrapper {  //It seems pepcli doesn't get the server's url as a cli parameter!!!!!!!!!!
@@ -24,6 +26,14 @@ impl PepCliWrapper{
         }
     }
 
+    ///Dowloads all the data available to the user. Data gets stored in an OS-managed temporary directory,
+    /// to avoid leaving sensitive files around in case of failures.
+    /// See also https://gitlab.pep.cs.ru.nl/pep-public/user-docs/-/wikis/Uploading-and-downloading-data#downloading-data
+    pub fn download_all(&self){
+
+    }
+
+    #[deprecated(note="Docs warn against using the list command: https://gitlab.pep.cs.ru.nl/pep-public/user-docs/-/wikis/Uploading-and-downloading-data#downloading-data")] //So funny when you write a brand-new function and you deprecate it straight away :D
     pub fn get_file_list(&self) -> Result<String, FromUtf8Error> {
         let output=Command::new(&self.path_to_pepcli)
             .arg("--oauth-token")
@@ -46,7 +56,9 @@ impl PepCliWrapper{
 
     }
 
-    pub fn get_columns(&self) -> Result<String, FromUtf8Error> {
+    ///Uses pepcli to query for the column-access. Then constructs a vector of strings containing
+    /// the column names.
+    pub fn get_columns(&self) -> Result<Vec<&str>, FromUtf8Error> {
         let output=Command::new(&self.path_to_pepcli)
             .arg("--oauth-token")
             .arg(&self.token)
@@ -56,8 +68,14 @@ impl PepCliWrapper{
             .expect("Error running pepcli");
         debug!("pepcli invocation: {:?} {:?} {:?} {:?} {:?}", &self.path_to_pepcli, "--oauth-token", &self.token, "query", "column-access");
         debug!("pepcli output: {:?}", output);
-        let columns_list=String::from_utf8(output.stdout)?;  //Using the unsafe version would have let me spare some error handling, under the assumption that pepcli always prints valid UTF-8 characters. But it would also have forced me to mark blocks as `unsafe` all over the place
-        Ok(columns_list)
+        let pepcli_answer =String::from_utf8(output.stdout)?;  //Using the unsafe version would have let me spare some error handling, under the assumption that pepcli always prints valid UTF-8 characters. But it would also have forced me to mark blocks as `unsafe` all over the place
+
+        //Extract the column names from the output using a regex
+        let re = regex::Regex::new(r"Visit(\d+).([A-Z]+)").unwrap();
+        let caps_iterator = re.find_iter(&pepcli_answer);
+        let column_vector: Vec<&str> = caps_iterator.map(|cap| cap.as_str()).collect(); //Don't worry, we're not doing any linear Algebra here :D
+
+        Ok(column_vector)
     }
 
     ///Queries the user's enrollment. Not very useful, except for debugging.
