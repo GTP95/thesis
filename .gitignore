@@ -284,8 +284,8 @@ TSWLatexianTemp*
 # PEP development
 token.json
 ClientKeys.json
+*.cert
 
 # misc files
 blueprint-master.tar.gz
 blueprint\ aug\ 2020\ main.pdf
-
