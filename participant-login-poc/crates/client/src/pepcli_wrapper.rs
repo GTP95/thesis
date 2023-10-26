@@ -5,10 +5,9 @@ use std::path::PathBuf;
 use std::process::{Command, Output};
 use std::string::FromUtf8Error;
 use log::debug;
-use log::Level::Debug;
-use tempfile::tempdir;
 use regex;
-use serde::__private::de::Content::U8;
+use async_process;
+
 
 
 ///
@@ -34,26 +33,25 @@ impl PepCliWrapper{
     /// to avoid leaving sensitive files around in case of failures.
     /// See also https://gitlab.pep.cs.ru.nl/pep-public/user-docs/-/wikis/Uploading-and-downloading-data#downloading-data
     /// Returns the path to the temporary directory containing the files
-    #[deprecated(note="The docs talk about the --all-accessible switch, but it doesn't exist, so this function doesn't work :(")]
-    pub fn download_all(&self) -> Result<PathBuf, Box<dyn Error>> {
+    pub async fn download_all(&self) -> Result<PathBuf, Box<dyn Error>> {
         let path_to_plp_temp_dir=self.path_to_temp_dir.join("PLP");
         match std::fs::create_dir(&path_to_plp_temp_dir){
             Ok(_) => {
-                let download=Command::new(&self.path_to_pepcli)
+                let download=async_process::Command::new(&self.path_to_pepcli)
                     .arg("--oauth-token")
                     .arg(&self.token)
                     .arg("pull")
                     .arg("--all-accessible")
                     .arg("--output-directory")
                     .arg(&path_to_plp_temp_dir)
-                    .output()?;
+                    .output().await?;
                 debug!("pepcli invocation: {:?} {:?} {:?} {:?} {:?} {:?} {:?}", &self.path_to_pepcli, "--oauth-token", &self.token, "pull", "--all-accessible", "--output-directory", &path_to_plp_temp_dir);
                 debug!("pepcli output: {:?}", &download);
 
                 //Now, it happened during testing to get the following error: "error: std::runtime_error: Temporary download directory /tmp/PLP-pending already exists. Specify --force to clear the directory and download anyway". So I'll check for this and in case it happens force the download
                 if std::str::from_utf8(&download.stderr)?.contains("Temporary download directory") && std::str::from_utf8(&download.stderr)?.contains("already exists"){
                     debug!("Temporary download directory already exists. Forcing download");
-                    let download=Command::new(&self.path_to_pepcli)
+                    let download=async_process::Command::new(&self.path_to_pepcli)
                         .arg("--oauth-token")
                         .arg(&self.token)
                         .arg("pull")
@@ -61,7 +59,7 @@ impl PepCliWrapper{
                         .arg("--output-directory")
                         .arg(&path_to_plp_temp_dir)
                         .arg("--force")
-                        .output()?;
+                        .output().await?;
                     debug!("pepcli invocation: {:?} {:?} {:?} {:?} {:?} {:?} {:?} {:?}", &self.path_to_pepcli, "--oauth-token", &self.token, "pull", "--all-accessible", "--output-directory", &path_to_plp_temp_dir, "--force");
                     debug!("pepcli output: {:?}", &download);
                 }
@@ -73,7 +71,17 @@ impl PepCliWrapper{
                     debug!("Temp directory already exists. Attempting to remove it");
                     std::fs::remove_dir_all(&path_to_plp_temp_dir)?;
                     debug!("Temp directory removed. Trying again");
-                    self.download_all()
+                    //recursive async functions are a mess, so I'll just duplicate the code
+                    std::fs::create_dir(&path_to_plp_temp_dir)?;
+                    async_process::Command::new(&self.path_to_pepcli)
+                        .arg("--oauth-token")
+                        .arg(&self.token)
+                        .arg("pull")
+                        .arg("--all-accessible")
+                        .arg("--output-directory")
+                        .arg(&path_to_plp_temp_dir)
+                        .output().await?;
+                    Ok(path_to_plp_temp_dir)
                 }
                 else{
                     return Err(Box::try_from(error).unwrap());
