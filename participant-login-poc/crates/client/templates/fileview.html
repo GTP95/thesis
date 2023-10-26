@@ -10,6 +10,12 @@
         <th>Visit</th>
         <th>Exam</th>
     </tr>
+    {% for column in pep_columns %}
+    <tr>
+        <td>{{ column.visit }}</td>
+        <td>{{ column.exam }}</td>
+    </tr>
+    {% endfor %}
 </table>
 </body>
 </html>

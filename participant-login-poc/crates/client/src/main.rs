@@ -6,7 +6,7 @@ mod pepcli_wrapper;
 use crate::irma_session_handler::{IrmaSessionHandler, RequestResult};
 use crate::http_client::HttpClient;
 use std::fs;
-use dioxus::html::{h1, h2};
+use dioxus::html::{br, h1, h2, img};
 use dioxus::prelude::*;
 use irma::{SessionResult, SessionToken};
 use log::debug;
@@ -14,7 +14,7 @@ use tera::Tera;
 use http_client::IrmaSessionStatus;
 use pepcli_wrapper::PepCliWrapper;
 
-enum CurrentStatus { StartUp, Disclose, IrmaSessionDone, FileView, Error(String) }
+enum CurrentStatus { StartUp, Disclose, IrmaSessionDone, DownloadFiles, Error(String) }
 
 struct State {
     config: Config,
@@ -155,7 +155,7 @@ fn App(cx: Scope<'_>) -> Element<'_> {
                 }
             }
         }
-        CurrentStatus::FileView => { render! {FileView{}} }
+        CurrentStatus::DownloadFiles => { render! {DownloadFile{}} }
         CurrentStatus::Error(error_message) => {
 
             render! {Error{error_message: error_message.to_string()}}
@@ -173,8 +173,8 @@ fn App(cx: Scope<'_>) -> Element<'_> {
 pub fn Startup(cx: Scope) -> Element {
     let status = use_shared_state::<State>(cx).unwrap();
     cx.render(rsx!(
-         h1 { "PEP PLA" }
-        h2{"PEP Participant Login Application"}
+         h1 { "PEP PLP" }
+        h2{"PEP Participant Login Portal"}
         button{
                 onclick: move |event| status.write().current_status=CurrentStatus::Disclose,
                 "Login with Yivi app"
@@ -199,7 +199,7 @@ pub fn Disclose(cx: Scope) -> Element {
 
     match qr_and_session_id {
         None => {
-            cx.render(rsx!(div{"Waiting for the server to respond..."}))
+            cx.render(rsx!(div{"Waiting for the IRMA server to respond..."}))
         }
         Some(Ok(qr_and_session_id)) => {
             let session_id = &qr_and_session_id.session_ptr;
@@ -322,14 +322,14 @@ pub fn GetPEPtoken(cx: Scope<SessionID>) -> Element {
 
     match response {
         None => {
-            cx.render(rsx!(div{"Waiting for the server to respond..."}))
+            cx.render(rsx!(div{"Waiting for the authentication middleware to respond..."}))
         }
         Some(Ok(token_and_attribute)) => {    //TODO: this is the place to create an instance of PepcliWrapper
             let  mut writable_status=status.write();
             if writable_status.pepcli_wrapper.is_none(){
                 writable_status.pepcli_wrapper=Some(PepCliWrapper::new(writable_status.path_to_pepcli.clone(), token_and_attribute.token.clone(), token_and_attribute.irma_attribute.clone()));
             }
-            writable_status.current_status = CurrentStatus::FileView;   //Go to next step
+            writable_status.current_status = CurrentStatus::DownloadFiles;   //Go to next step
             cx.render(rsx!(div{"If you're seeing this, something went wrong. You can drop an email to support@pep.cs.ru.nl about what happened."}))    //This should never get rendered, as updating the status triggers a re-render that moves the app to the next state
         }
         Some(Err(error)) => {
@@ -339,21 +339,29 @@ pub fn GetPEPtoken(cx: Scope<SessionID>) -> Element {
 }
 
 #[allow(non_snake_case)] //UpperCamelCase isn't just a convention in Dioxus
-pub fn FileView(cx: Scope) -> Element {
-    let status = use_shared_state::<State>(cx).unwrap();
+pub fn DownloadFile(cx: Scope) -> Element {
+    debug!("DownloadFile");
+    let status = use_shared_state::<State>(cx).expect("Error getting shared state inside DownloadFile");
     let pepcli_wrapper = &status.read().pepcli_wrapper;
     match pepcli_wrapper {
         Some(pepcli_wrapper) => {
-            let available_files = pepcli_wrapper.get_file_list();
-            match available_files {
-                Ok(files) => {
-                    debug!("Files: {}", files);
-                    cx.render(rsx!(div{"Files: {files}"}))
+            let download_files = pepcli_wrapper.download_all();
+            match download_files {
+                Ok(path_to_plp_temp_dir) => {
+                    debug!("Path to temp directory: {:?}", path_to_plp_temp_dir);
+                    cx.render(rsx!(
+                        h1{"Downloading files"}
+                        div{"Please wait while we download your data."
+                            br{}
+                        img { src: "resources/loading.gif" }
+                        }
+
+                    ))
                 }
                 Err(error) => {
-                    debug!("Error getting files: {}", error.to_string());
+                    debug!("Error fetching files: {}", error.to_string());
                     status.write().current_status = CurrentStatus::Error(error.to_string());
-                    cx.render(rsx!(div{"Error: {error.to_string()}"}))  //this doesn't get rendered, as updating the status triggers a re-render that moves the app to the next state, that renders another thing
+                    cx.render(rsx!(div{"If you're seeing this, something went wrong. You can drop an email to support@pep.cs.ru.nl about what happened."}))  //this doesn't get rendered, as updating the status triggers a re-render that moves the app to the next state, that renders another thing
                 }
             }
         }
