@@ -11,6 +11,7 @@ use async_process;
 
 
 ///
+#[derive(Clone)]    //To quickly fix ownership issues in the DiwbnloadFiles function inside main.rs
 pub struct PepCliWrapper {  //It seems pepcli doesn't get the server's url as a cli parameter!!!!!!!!!!
     path_to_pepcli: String,
     token: String,

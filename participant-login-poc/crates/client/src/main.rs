@@ -3,10 +3,10 @@ mod irma_session_handler;
 mod pepcli_wrapper;
 mod file_browser;
 
-
 use crate::irma_session_handler::{IrmaSessionHandler, RequestResult};
 use crate::http_client::HttpClient;
 use std::fs;
+use std::path::PathBuf;
 use dioxus::html::{br, h1, h2, img};
 use dioxus::prelude::*;
 use irma::{SessionResult, SessionToken};
@@ -15,7 +15,7 @@ use tera::Tera;
 use http_client::IrmaSessionStatus;
 use pepcli_wrapper::PepCliWrapper;
 
-enum CurrentStatus { StartUp, Disclose, IrmaSessionDone, DownloadFiles, Error(String) }
+enum CurrentStatus { StartUp, Disclose, IrmaSessionDone, DownloadFiles, BrowseFiles, Error(String) }
 
 struct State {
     config: Config,
@@ -156,7 +156,8 @@ fn App(cx: Scope<'_>) -> Element<'_> {
                 }
             }
         }
-        CurrentStatus::DownloadFiles => { render! {DownloadFile{}} }
+        CurrentStatus::DownloadFiles => { render! {DownloadFiles{}} }
+        CurrentStatus::BrowseFiles => {render!{file_browser::Browser{}}}
         CurrentStatus::Error(error_message) => {
 
             render! {Error{error_message: error_message.to_string()}}
@@ -340,16 +341,36 @@ pub fn GetPEPtoken(cx: Scope<SessionID>) -> Element {
 }
 
 #[allow(non_snake_case)] //UpperCamelCase isn't just a convention in Dioxus
-pub fn DownloadFile(cx: Scope) -> Element {
+pub fn DownloadFiles(cx: Scope) -> Element {
     debug!("DownloadFile");
     let status = use_shared_state::<State>(cx).expect("Error getting shared state inside DownloadFile");
-    let pepcli_wrapper = &status.read().pepcli_wrapper;
+    let pepcli_wrapper = status.read().pepcli_wrapper.clone();  //Likely to cause issues
     match pepcli_wrapper {
         Some(pepcli_wrapper) => {
-            let download_files = pepcli_wrapper.download_all();
+            let download_files = use_future(
+                cx, (),
+                {
+                    to_owned![pepcli_wrapper];
+                    move |_| async move { pepcli_wrapper.download_all().await }
+                },
+            ).value();
             match download_files {
-                Ok(path_to_plp_temp_dir) => {
-                    debug!("Path to temp directory: {:?}", path_to_plp_temp_dir);
+                Some(download_result) => {
+                    match download_result {
+                        Ok(path_to_plp_temp_dir) => {
+                            debug!("Path to temp directory: {:?}", path_to_plp_temp_dir);
+                            //TODO: go to next step: FileBrowser!
+                            cx.render(rsx!(div{"If you're seeing this, something went wrong. You can drop an email to support@pep.cs.ru.nl about what happened."}))    //This should never get rendered, as updating the status triggers a re-render that moves the app to the next state
+                        }
+                        Err(error) => {
+                            debug!("Error fetching files: {}", error.to_string());
+                            status.write().current_status = CurrentStatus::Error(error.to_string());
+                            cx.render(rsx!(div{"If you're seeing this, something went wrong. You can drop an email to support@pep.cs.ru.nl about what happened."}))  //this doesn't get rendered, as updating the status triggers a re-render that moves the app to the next state, that renders another thing
+                        }
+                    }
+                }
+                None => {
+
                     cx.render(rsx!(
                         h1{"Downloading files"}
                         div{"Please wait while we download your data."
@@ -359,11 +380,7 @@ pub fn DownloadFile(cx: Scope) -> Element {
 
                     ))
                 }
-                Err(error) => {
-                    debug!("Error fetching files: {}", error.to_string());
-                    status.write().current_status = CurrentStatus::Error(error.to_string());
-                    cx.render(rsx!(div{"If you're seeing this, something went wrong. You can drop an email to support@pep.cs.ru.nl about what happened."}))  //this doesn't get rendered, as updating the status triggers a re-render that moves the app to the next state, that renders another thing
-                }
+
             }
         }
         None => {
