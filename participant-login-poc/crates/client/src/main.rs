@@ -1,6 +1,7 @@
 mod http_client;
 mod irma_session_handler;
 mod pepcli_wrapper;
+mod file_browser;
 
 
 use crate::irma_session_handler::{IrmaSessionHandler, RequestResult};

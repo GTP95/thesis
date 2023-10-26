@@ -25,4 +25,5 @@ lazy_static = "1.4.0"
 tempfile = "3.8.0"
 log = "0.4.20"
 env_logger = "0.10.0"
+open = "5.0.0"
 
