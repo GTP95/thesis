@@ -1,13 +1,43 @@
 #![allow(non_snake_case)]
 //! Code adapted from Dioxus' file-explorer example: https://github.com/DioxusLabs/example-projects
 
+use std::path::PathBuf;
 use dioxus::prelude::*;
+use crate::State;
+
+#[derive(PartialEq, Props)]
+pub(crate) struct Path {
+    pub(crate) path: PathBuf,
+}
 
 
 
+pub(crate) fn Browser(cx: Scope<Path>) -> Element {
+    let status = use_shared_state::<State>(cx).unwrap();
+    let path_to_plp_temp_dir=&cx.props.path;
+    //pecli creates a subdirectory whose name is the participant's local pseudonym. We need to go one level deeper
+    let child_directory=match std::fs::read_dir(path_to_plp_temp_dir){
+        Ok(mut iterator) => {
+            loop{
+                let entry=iterator.next();
+                match entry{
+                    Some(entry) => {
+                        let entry=entry.unwrap();
+                        let path=entry.path();
+                        if path.is_dir() && path.file_name().unwrap().to_str().unwrap().starts_with("GUM"){
+                            break path;
+                        }
+                    },
+                    None => {
+                        break path_to_plp_temp_dir.to_path_buf();
+                    }
+                }
+            }
+        }
+        Err(error) => {status.write().current_status=crate::CurrentStatus::Error(error.to_string()); path_to_plp_temp_dir.to_path_buf()}    //Here I have to return something, that's why there is path_to_plp_temp_dir.to_path_buf(). But it doesn't matter as we are transitioning to the error state
+    };
 
-pub(crate) fn Browser(cx: Scope) -> Element {
-    let files = use_ref(cx, Files::new);
+    let files = use_ref(cx, || {Files::new(child_directory.to_str().unwrap().to_string())});
 
     render!(div {
         link { href:"https://fonts.googleapis.com/icon?family=Material+Icons", rel:"stylesheet" }
@@ -57,9 +87,9 @@ struct Files {
 }
 
 impl Files {
-    fn new() -> Self {
+    fn new(base_path: String) -> Self {
         let mut files = Self {
-            path_stack: vec!["./".to_string()],
+            path_stack: vec![base_path],
             path_names: vec![],
             err: None,
         };
@@ -122,5 +152,12 @@ impl Files {
     }
     fn clear_err(&mut self) {
         self.err = None;
+    }
+
+    ///Changes the base directory from which to start browsing the files.
+    /// Intended to be called only once right after the instatiation of the struct.
+    fn set_new_base_dir(&mut self, new_cwd: String){
+        self.path_stack=vec![new_cwd];
+        self.reload_path_list();
     }
 }

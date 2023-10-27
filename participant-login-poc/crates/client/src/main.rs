@@ -14,8 +14,9 @@ use log::debug;
 use tera::Tera;
 use http_client::IrmaSessionStatus;
 use pepcli_wrapper::PepCliWrapper;
+use crate::file_browser::Path;
 
-enum CurrentStatus { StartUp, Disclose, IrmaSessionDone, DownloadFiles, BrowseFiles, Error(String) }
+enum CurrentStatus { StartUp, Disclose, IrmaSessionDone, DownloadFiles, BrowseFiles(PathBuf), Error(String) }
 
 struct State {
     config: Config,
@@ -74,69 +75,75 @@ fn main() {
  */
 #[allow(non_snake_case)] //UpperCamelCase isn't just a convention in Dioxus
 fn App(cx: Scope<'_>) -> Element<'_> {
-    //open and parse config.toml configuration file
-    let config =
-        fs::read_to_string("config/config.toml").expect("Error reading config/config.toml file");
-    let config: toml::Value =
-        toml::from_str(&config).expect("Error parsing config/config.toml file");
+    /* every time the application is re-rendered, it executes this function again. Re-initializing
+    the configuration isn't just wasteful: it actually causes a crash when the Browser function inside
+    file_browser changes the current working directory: after that, this function can't find the
+    configuration file anymore. So I'm initializing the state only the very first time this gets executed.
+     */
+    if use_shared_state::<State>(cx).is_none() {
+        //open and parse config.toml configuration file
+        let config =
+            fs::read_to_string("config/config.toml").expect("Error reading config/config.toml file");
+        let config: toml::Value =
+            toml::from_str(&config).expect("Error parsing config/config.toml file");
 
-    //Get configuration values from configuration file
-    let path_to_spoof_check_secret_file = config["path_to_spoof_check_secret_file"]
-        .as_str()
-        .expect("Error parsing path_to_spoof_check_secret_file from config/config.toml");
-    let path_to_root_ca_certificate = config["path_to_root_ca_certificate"]
-        .as_str()
-        .expect("Error parsing path_to_root_ca_certificate from config/config.toml");
-    let uid_field_name = config["uid_field_name"]
-        .as_str()
-        .expect("Error parsing uid_field_name from config/config.toml");
-    let middleware_auth_server_address = config["middleware_auth_server_address"]
-        .as_str()
-        .expect("Error parsing auth_server_address from config/config.toml");
-    let path_to_pepcli = config["path_to_pepcli"]
-        .as_str()
-        .expect("Error parsing path_to_pepcli from config/config.toml");
-
-
-    //get spoof_check_secret from path_to_spoof_check_secret_file
-    let spoof_check_secret = fs::read_to_string(path_to_spoof_check_secret_file)
-        .expect("Error reading spoof_check_secret file indicated in config/config.toml");
-    //remove eventual withespace characters, including newlines
-    let spoof_check_secret = spoof_check_secret.trim().to_string();
-    //parse Tera templates
-    let mut tera = match Tera::new("templates/**/*.html") {
-        Ok(t) => t,
-        Err(e) => {
-            debug!("Parsing error(s): {}", e);
-            std::process::exit(1);
-        }
-    };
-
-    tera.autoescape_on(vec![]); //Turns escaping OFF, otherwise the SVG containing the QR code in the disclose page gets displayed as text (i.e, the text description of the SVG format, no image)
-
-    let http_client = http_client::HttpClient::new(middleware_auth_server_address.parse().unwrap(), uid_field_name.parse().unwrap(), spoof_check_secret.parse().unwrap(), path_to_root_ca_certificate.parse().unwrap());
+        //Get configuration values from configuration file
+        let path_to_spoof_check_secret_file = config["path_to_spoof_check_secret_file"]
+            .as_str()
+            .expect("Error parsing path_to_spoof_check_secret_file from config/config.toml");
+        let path_to_root_ca_certificate = config["path_to_root_ca_certificate"]
+            .as_str()
+            .expect("Error parsing path_to_root_ca_certificate from config/config.toml");
+        let uid_field_name = config["uid_field_name"]
+            .as_str()
+            .expect("Error parsing uid_field_name from config/config.toml");
+        let middleware_auth_server_address = config["middleware_auth_server_address"]
+            .as_str()
+            .expect("Error parsing auth_server_address from config/config.toml");
+        let path_to_pepcli = config["path_to_pepcli"]
+            .as_str()
+            .expect("Error parsing path_to_pepcli from config/config.toml");
 
 
-    let config = Config {
-        server_address: String::from(middleware_auth_server_address),
-        user_id: String::from(uid_field_name),
-        spoof_check_secret: spoof_check_secret,
-        uid_field_name: String::from(uid_field_name),
-    };
+        //get spoof_check_secret from path_to_spoof_check_secret_file
+        let spoof_check_secret = fs::read_to_string(path_to_spoof_check_secret_file)
+            .expect("Error reading spoof_check_secret file indicated in config/config.toml");
+        //remove eventual withespace characters, including newlines
+        let spoof_check_secret = spoof_check_secret.trim().to_string();
+        //parse Tera templates
+        let mut tera = match Tera::new("templates/**/*.html") {
+            Ok(t) => t,
+            Err(e) => {
+                debug!("Parsing error(s): {}", e);
+                std::process::exit(1);
+            }
+        };
 
-    let status = State {
-        config: config,
-        template_engine: tera,
-        irma_session_id: None,
-        http_client: http_client,
-        current_status: CurrentStatus::StartUp,
-        irma_session_ptr: None,
-        path_to_pepcli: path_to_pepcli.to_string(),
-        pepcli_wrapper: None,
-    };
+        tera.autoescape_on(vec![]); //Turns escaping OFF, otherwise the SVG containing the QR code in the disclose page gets displayed as text (i.e, the text description of the SVG format, no image)
 
-    use_shared_state_provider(cx, || status);
+        let http_client = http_client::HttpClient::new(middleware_auth_server_address.parse().unwrap(), uid_field_name.parse().unwrap(), spoof_check_secret.parse().unwrap(), path_to_root_ca_certificate.parse().unwrap());
 
+
+        let config = Config {
+            server_address: String::from(middleware_auth_server_address),
+            user_id: String::from(uid_field_name),
+            spoof_check_secret: spoof_check_secret,
+            uid_field_name: String::from(uid_field_name),
+        };
+
+        let status = State {
+            config: config,
+            template_engine: tera,
+            irma_session_id: None,
+            http_client: http_client,
+            current_status: CurrentStatus::StartUp,
+            irma_session_ptr: None,
+            path_to_pepcli: path_to_pepcli.to_string(),
+            pepcli_wrapper: None,
+        };
+
+        use_shared_state_provider(cx, || status);
+    }
     let status = use_shared_state::<State>(cx).unwrap().read();  //Get a new reference since I lost ownership by calling use_shared_state_provider
 
     match &status.current_status {
@@ -157,7 +164,7 @@ fn App(cx: Scope<'_>) -> Element<'_> {
             }
         }
         CurrentStatus::DownloadFiles => { render! {DownloadFiles{}} }
-        CurrentStatus::BrowseFiles => {render!{file_browser::Browser{}}}
+        CurrentStatus::BrowseFiles(path) => {render!{file_browser::Browser{path: path.clone()}}}
         CurrentStatus::Error(error_message) => {
 
             render! {Error{error_message: error_message.to_string()}}
@@ -344,7 +351,7 @@ pub fn GetPEPtoken(cx: Scope<SessionID>) -> Element {
 pub fn DownloadFiles(cx: Scope) -> Element {
     debug!("DownloadFile");
     let status = use_shared_state::<State>(cx).expect("Error getting shared state inside DownloadFile");
-    let pepcli_wrapper = status.read().pepcli_wrapper.clone();  //Likely to cause issues
+    let pepcli_wrapper = status.read().pepcli_wrapper.clone();
     match pepcli_wrapper {
         Some(pepcli_wrapper) => {
             let download_files = use_future(
@@ -358,14 +365,14 @@ pub fn DownloadFiles(cx: Scope) -> Element {
                 Some(download_result) => {
                     match download_result {
                         Ok(path_to_plp_temp_dir) => {
-                            debug!("Path to temp directory: {:?}", path_to_plp_temp_dir);
-                            //TODO: go to next step: FileBrowser!
+                            debug!("Path to temp directory: {:?}", &path_to_plp_temp_dir);
+                            status.write().current_status = CurrentStatus::BrowseFiles(path_to_plp_temp_dir.clone());   //Go to next step
                             cx.render(rsx!(div{"If you're seeing this, something went wrong. You can drop an email to support@pep.cs.ru.nl about what happened."}))    //This should never get rendered, as updating the status triggers a re-render that moves the app to the next state
                         }
                         Err(error) => {
                             debug!("Error fetching files: {}", error.to_string());
                             status.write().current_status = CurrentStatus::Error(error.to_string());
-                            cx.render(rsx!(div{"If you're seeing this, something went wrong. You can drop an email to support@pep.cs.ru.nl about what happened."}))  //this doesn't get rendered, as updating the status triggers a re-render that moves the app to the next state, that renders another thing
+                            cx.render(rsx!(div{"If you're seeing this, something went wrong. You can drop an email to support@pep.cs.ru.nl about what happened."}))  //this doesn't get rendered, as updating the status triggers a re-render that moves the app to the next state
                         }
                     }
                 }
