@@ -4,6 +4,7 @@
 use std::path::PathBuf;
 use dioxus::prelude::*;
 use crate::State;
+use std::fs::remove_dir_all;
 
 #[derive(PartialEq, Props)]
 pub(crate) struct Path {
@@ -15,6 +16,14 @@ pub(crate) struct Path {
 pub(crate) fn Browser(cx: Scope<Path>) -> Element {
     let status = use_shared_state::<State>(cx).unwrap();
     let path_to_plp_temp_dir=&cx.props.path;
+
+    //Register a callback for when this component gets unmounted to cleanup the temporary directory
+    use_on_unmount(cx, {
+        to_owned![path_to_plp_temp_dir];
+       move|| {
+        remove_dir_all(path_to_plp_temp_dir);}
+    });
+
     //pecli creates a subdirectory whose name is the participant's local pseudonym. We need to go one level deeper
     let child_directory=match std::fs::read_dir(path_to_plp_temp_dir){
         Ok(mut iterator) => {
