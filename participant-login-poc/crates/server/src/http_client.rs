@@ -4,10 +4,7 @@ use log::debug;
 use rand::{Rng, thread_rng};
 use reqwest::{Error, redirect, Response, StatusCode};
 use reqwest::header::LOCATION;
-use rocket::figment::Provider;
-use rocket::futures::TryFutureExt;
 use serde::Deserialize;
-use serde_json::json;
 use sha256::digest;
 
 pub struct HttpClient {

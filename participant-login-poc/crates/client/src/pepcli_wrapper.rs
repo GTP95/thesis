@@ -2,7 +2,7 @@ use std::env::temp_dir;
 use std::error::Error;
 use std::io;
 use std::path::PathBuf;
-use std::process::{Command, Output};
+use std::process::Command;
 use std::string::FromUtf8Error;
 use log::debug;
 use regex;

@@ -7,14 +7,13 @@ use crate::irma_session_handler::{IrmaSessionHandler, RequestResult};
 use crate::http_client::HttpClient;
 use std::fs;
 use std::path::PathBuf;
-use dioxus::html::{br, h1, h2, img};
 use dioxus::prelude::*;
 use irma::{SessionResult, SessionToken};
 use log::debug;
 use tera::Tera;
 use http_client::IrmaSessionStatus;
 use pepcli_wrapper::PepCliWrapper;
-use crate::file_browser::Path;
+
 
 enum CurrentStatus { StartUp, Disclose, IrmaSessionDone, DownloadFiles, BrowseFiles(PathBuf), Error(String) }
 

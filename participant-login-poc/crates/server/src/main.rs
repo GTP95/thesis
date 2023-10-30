@@ -1,9 +1,8 @@
 mod irma_session_handler;
 mod http_client;
 
-use std::error::Error;
+
 use std::fs;
-use std::future::Future;
 use std::fmt;
 use serde_json::json;
 use rocket::{launch, get, routes, State};
@@ -12,8 +11,7 @@ use rocket::response::{status, content};
 use serde::Serialize;
 use crate::http_client::HttpClient;
 use crate::irma_session_handler::{IrmaSessionHandler, RequestResult};
-use log::{debug, error, log_enabled, info, Level};
-use rocket::futures::TryFutureExt;
+
 
 #[derive(Debug)]
 struct Codes {
