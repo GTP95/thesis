@@ -33,6 +33,7 @@ struct Config {
     user_id: String,
     spoof_check_secret: String,
     uid_field_name: String,
+    column_group: String
 }
 
 
@@ -102,6 +103,9 @@ fn App(cx: Scope<'_>) -> Element<'_> {
         let path_to_pepcli = config["path_to_pepcli"]
             .as_str()
             .expect("Error parsing path_to_pepcli from config/config.toml");
+        let column_group=config["column_group"]
+            .as_str()
+            .expect("Error parsing column_group from config/config.toml");
 
 
         //get spoof_check_secret from path_to_spoof_check_secret_file
@@ -128,6 +132,7 @@ fn App(cx: Scope<'_>) -> Element<'_> {
             user_id: String::from(uid_field_name),
             spoof_check_secret: spoof_check_secret,
             uid_field_name: String::from(uid_field_name),
+            column_group: String::from(column_group)
         };
 
         let status = State {
@@ -332,10 +337,10 @@ pub fn GetPEPtoken(cx: Scope<SessionID>) -> Element {
         None => {
             cx.render(rsx!(div{"Waiting for the authentication middleware to respond..."}))
         }
-        Some(Ok(token_and_attribute)) => {    //TODO: this is the place to create an instance of PepcliWrapper
+        Some(Ok(token_and_attribute)) => {
             let  mut writable_status=status.write();
             if writable_status.pepcli_wrapper.is_none(){
-                writable_status.pepcli_wrapper=Some(PepCliWrapper::new(writable_status.path_to_pepcli.clone(), token_and_attribute.token.clone(), token_and_attribute.irma_attribute.clone()));
+                writable_status.pepcli_wrapper=Some(PepCliWrapper::new(writable_status.path_to_pepcli.clone(), token_and_attribute.token.clone(), token_and_attribute.irma_attribute.clone(), writable_status.config.column_group.clone()));
             }
             writable_status.current_status = CurrentStatus::DownloadFiles;   //Go to next step
             cx.render(rsx!(div{"If you're seeing this, something went wrong. You can drop an email to support@pep.cs.ru.nl about what happened."}))    //This should never get rendered, as updating the status triggers a re-render that moves the app to the next state

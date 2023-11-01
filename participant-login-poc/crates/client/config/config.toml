@@ -3,3 +3,4 @@ path_to_root_ca_certificate='/home/giacomo/VirtualBox VMs/Cartella di passaggio/
 uid_field_name= 'uid'
 middleware_auth_server_address= 'http://localhost:8000'
 path_to_pepcli= 'resources/pepcli'
+column_group= 'Visits'  #Name of the column group the participants are given access to

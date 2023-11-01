@@ -11,22 +11,24 @@ use async_process;
 
 
 ///
-#[derive(Clone)]    //To quickly fix ownership issues in the DiwbnloadFiles function inside main.rs
+#[derive(Clone)]    //To quickly fix ownership issues in the DownloadFiles function inside main.rs
 pub struct PepCliWrapper {  //It seems pepcli doesn't get the server's url as a cli parameter!!!!!!!!!!
     path_to_pepcli: String,
     token: String,
     path_to_temp_dir: PathBuf,
-    participant_group: String
+    participant_group: String,
+    column_group: String
 }
 
 impl PepCliWrapper{
-    pub(crate) fn new(path_to_pepcli: String, oauth_token: String, irma_attribute: String) -> PepCliWrapper{
+    pub(crate) fn new(path_to_pepcli: String, oauth_token: String, irma_attribute: String, column_group: String) -> PepCliWrapper{
         let temp_dir=temp_dir();
         PepCliWrapper{
             path_to_pepcli: path_to_pepcli,
             token: oauth_token,
             path_to_temp_dir: temp_dir,
-            participant_group: irma_attribute
+            participant_group: irma_attribute,
+            column_group: column_group
         }
     }
 
@@ -99,7 +101,7 @@ impl PepCliWrapper{
             .arg(&self.token)
             .arg("list")
             .arg("-C")
-            .arg("Visits")  //TODO: read from config file
+            .arg(&self.column_group)
             .arg("-P")
             .arg(&self.participant_group)
             .output()
