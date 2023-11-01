@@ -1,3 +1,6 @@
+//! This crate implements the generation of an IRMA cerdential for a participant in the form of a QR code.
+
+#![warn(missing_docs)]
 use crate::irma_session_handler::IrmaSessionHandler;
 use crate::token_generator::generate_participant_token;
 use rocket::response::stream::TextStream;

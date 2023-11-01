@@ -21,7 +21,8 @@ pub(crate) fn Browser(cx: Scope<Path>) -> Element {
     use_on_unmount(cx, {
         to_owned![path_to_plp_temp_dir];
        move|| {
-        remove_dir_all(path_to_plp_temp_dir);}
+        let _ = remove_dir_all(path_to_plp_temp_dir);   //Ignoring the returned whatever. It can fail, but then it is a temporary directory and will be eventually deleted by the OS anyway
+       }
     });
 
     //pecli creates a subdirectory whose name is the participant's local pseudonym. We need to go one level deeper
