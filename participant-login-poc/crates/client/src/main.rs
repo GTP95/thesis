@@ -1,3 +1,5 @@
+#![warn(missing_docs)]
+
 mod http_client;
 mod irma_session_handler;
 mod pepcli_wrapper;
