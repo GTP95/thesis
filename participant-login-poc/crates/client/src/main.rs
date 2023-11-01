@@ -8,12 +8,10 @@ mod irma_session_handler;
 mod pepcli_wrapper;
 mod file_browser;
 
-use crate::irma_session_handler::{IrmaSessionHandler, RequestResult};
 use crate::http_client::HttpClient;
 use std::fs;
 use std::path::PathBuf;
 use dioxus::prelude::*;
-use irma::{SessionResult, SessionToken};
 use log::debug;
 use tera::Tera;
 use http_client::IrmaSessionStatus;
@@ -42,27 +40,25 @@ struct Config {
     column_group: String
 }
 
-
-struct Codes {
-    code: String,
-    code_verifier: [u8; 32],
-}
-
+///Needed to pass the IRMA session pointer to the relative Dioxus component
 #[derive(PartialEq, Props)]
 pub struct IrmaSessionPtr {
     session_id: String,
 }
 
+///Needed to pass IRMA's QR code to the relative Dioxus component
 #[derive(PartialEq, Props)]
 pub struct QrCode {
     qr: String,
 }
 
+///Most likely just a duplicate of IrmaSessionPtr, so it could be removed
 #[derive(PartialEq, Props)]
 pub struct SessionID {
     session_id: String,
 }
 
+///Needed to pass error messages to the relative Dioxus component
 #[derive(PartialEq, Props)]
 pub struct Error {
     error_message: String,
@@ -326,6 +322,7 @@ pub fn Qr(cx: Scope<QrCode>) -> Element {
     )
 }
 
+///Contacts the middleware to obtain the PEP's OAuth token corresponding to the given IRMA session ID
 #[allow(non_snake_case)] //UpperCamelCase isn't just a convention in Dioxus
 pub fn GetPEPtoken(cx: Scope<SessionID>) -> Element {
     let status = use_shared_state::<State>(cx).unwrap();
@@ -357,6 +354,7 @@ pub fn GetPEPtoken(cx: Scope<SessionID>) -> Element {
     }
 }
 
+///Shows the user the file browser to open the files they want to see
 #[allow(non_snake_case)] //UpperCamelCase isn't just a convention in Dioxus
 pub fn DownloadFiles(cx: Scope) -> Element {
     debug!("DownloadFile");
@@ -408,6 +406,8 @@ pub fn DownloadFiles(cx: Scope) -> Element {
     }
 }
 
+
+///Dioxus component displaying errors to the user
 #[allow(non_snake_case)] //UpperCamelCase isn't just a convention in Dioxus
 pub fn Error(cx: Scope<Error>) -> Element {
     let error_message = &cx.props.error_message;
@@ -418,45 +418,4 @@ pub fn Error(cx: Scope<Error>) -> Element {
         div{"{error_message}"}
 
     ))
-}
-
-/**
- * Starts an IRMA session to disclose the user's PEP ID
- * # Arguments
- * * `template_engine` - The template engine to use to render the QR code
- * * `irma_session_handler` - The IRMA session handler to use to start the session
- */
-async fn irma_disclose_id(irma_session_handler: &IrmaSessionHandler) -> Result<RequestResult, irma::Error> {
-    let request_result = irma_session_handler
-        .disclose_id(String::from("irma-demo.PEP.id.id"))
-        .await?;
-
-    Ok(request_result)
-}
-
-
-/**
- * Gets the status of the IRMA session with the given session ID
- * # Arguments
- * * `session_id` - The session ID to get the status of
- * * `irma_session_handler` - The IRMA session handler to use to get the status
- */
-async fn get_status(session_id: &String, irma_session_handler: &IrmaSessionHandler) -> Result<SessionResult, irma::Error> {
-    let session_token = SessionToken(session_id.to_string());
-    irma_session_handler.get_status(&session_token).await
-}
-
-/**
-* Extracts PEP's auth token from the error message returned when trying to follow the redirect to localhost:16515
-   * # Arguments
-   * * `error_message` - The error message
- */
-fn extract_token_from_error_message(error_message: &str) -> String {
-    //This can be made more robust against possible future changes of the error by writing a regex, but finding one that works can be tricky
-    debug!("Going to extract a token from the following error message: {}", error_message);
-    let start = error_message.find("code=");
-    let end = error_message.find(")");
-    let result = &error_message[start.unwrap() + 5..end.unwrap()];
-    debug!("extracted token: {}", result);
-    result.to_string()
 }

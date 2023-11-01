@@ -1,3 +1,9 @@
+//! This crate implements the server-side part of a participant's login flow.
+//! It is referred as "middleware" in other places.
+
+
+#![warn(missing_docs)]
+
 mod irma_session_handler;
 mod http_client;
 

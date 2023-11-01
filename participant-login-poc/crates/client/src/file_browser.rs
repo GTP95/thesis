@@ -1,5 +1,5 @@
 #![allow(non_snake_case)]
-//! Code adapted from Dioxus' file-explorer example: https://github.com/DioxusLabs/example-projects
+//! Code adapted from Dioxus' file-explorer example: <https://github.com/DioxusLabs/example-projects>
 
 use std::path::PathBuf;
 use dioxus::prelude::*;

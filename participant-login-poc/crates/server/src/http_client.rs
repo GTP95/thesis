@@ -14,10 +14,7 @@ pub struct HttpClient {
     spoof_check_secret: String,
 }
 
-pub struct AuthResponse {
-    pub code_verifier: String,
-    pub response: reqwest::Response,
-}
+
 
 #[derive(Deserialize)]
 struct TokenResponse{
@@ -155,7 +152,7 @@ impl HttpClient {
    * Generates a code verifier. Not all ASCII characters are valid ones, that's why I'm implementing
     * this function instead of using a random string generator.
     * It generates a random string of 128 characters, which is the maximum length allowed by the OAuth2 spec.
-    * See https://tools.ietf.org/html/rfc7636#section-4.1
+    * See <https://tools.ietf.org/html/rfc7636#section-4.1>
     */
     fn generate_code_verifier()->String{
        let valid_characters="ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~";

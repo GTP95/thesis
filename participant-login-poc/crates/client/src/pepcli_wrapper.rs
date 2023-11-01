@@ -34,7 +34,7 @@ impl PepCliWrapper{
 
     ///Downloads all the data available to the user. Data gets stored in an OS-managed temporary directory,
     /// to avoid leaving sensitive files around in case of failures.
-    /// See also https://gitlab.pep.cs.ru.nl/pep-public/user-docs/-/wikis/Uploading-and-downloading-data#downloading-data
+    /// See also <https://gitlab.pep.cs.ru.nl/pep-public/user-docs/-/wikis/Uploading-and-downloading-data#downloading-data>
     /// Returns the path to the temporary directory containing the files
     pub async fn download_all(&self) -> Result<PathBuf, Box<dyn Error>> {
         let path_to_plp_temp_dir=self.path_to_temp_dir.join("PLP");
@@ -113,9 +113,7 @@ impl PepCliWrapper{
         Ok(available_data)
     }
 
-    pub fn download_file(&self, file_id: &str){
 
-    }
 
     ///Uses pepcli to query for the column-access. Then constructs a vector of strings containing
     /// the column names.
