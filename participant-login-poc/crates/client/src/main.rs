@@ -1,3 +1,6 @@
+//! This crate implements the client-side authentication flow for a PEP study participants.
+
+
 #![warn(missing_docs)]
 
 mod http_client;
@@ -17,6 +20,7 @@ use http_client::IrmaSessionStatus;
 use pepcli_wrapper::PepCliWrapper;
 
 
+///Indicates in which stage the application is, or has to be. Used for state transitions
 enum CurrentStatus { StartUp, Disclose, IrmaSessionDone, DownloadFiles, BrowseFiles(PathBuf), Error(String) }
 
 struct State {
