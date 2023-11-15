@@ -23,7 +23,7 @@ def arg_parser():
 
 
 if __name__ == '__main__':
-    debug = Debug("my_application:some_subpackage:this_module")
+    debug = Debug("enroll")
     arguments = arg_parser()
 
     # Create a new group
