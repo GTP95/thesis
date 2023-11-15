@@ -27,35 +27,35 @@ if __name__ == '__main__':
     arguments = arg_parser()
 
     # Create a new group
-    pepcli_invocation = 'pepcli --oauth-token-secret ' + arguments.oauth_token_secret + ' --oauth-token-group "Access Administrator" asa group create ' + arguments.attribute
+    pepcli_invocation = ['pepcli', '--oauth-token-secret', arguments.oauth_token_secret, '--oauth-token-group', '"Access Administrator"', 'asa', 'group', 'create', arguments.attribute]
     debug(pepcli_invocation)
     run(pepcli_invocation)
 
     # Add a new member to the group
-    pepcli_invocation = 'pepcli --oauth-token-secret ' + arguments.oauth_token_secret + ' --oauth-token-group "Access Administrator" asa user addTo ' + arguments.attribute + ' ' + arguments.attribute
+    pepcli_invocation = ['pepcli', '--oauth-token-secret', arguments.oauth_token_secret, '--oauth-token-group', '"Access Administrator"', 'asa', 'user', 'addTo', arguments.attribute, arguments.attribute]
     debug(pepcli_invocation)
     run(pepcli_invocation)
 
     # Create a new participant group
-    pepcli_invocation = 'pepcli --oauth-token-secret ' + arguments.oauth_token_secret + ' --oauth-token-group "Data Administrator" ama group create ' + arguments.attribute
+    pepcli_invocation = ['pepcli', '--oauth-token-secret', arguments.oauth_token_secret,'--oauth-token-group', '"Data Administrator"', 'ama', 'group', 'create', arguments.attribute]
     debug(pepcli_invocation)
     run(pepcli_invocation)
 
     # Create participant group access rules giving the user access to the new participant group
-    pepcli_invocation = 'pepcli --oauth-token-secret ' + arguments.oauth_token_secret + ' --oauth-token-group "Access Administrator" ama pgar create ' + arguments.attribute + ' ' + arguments.attribute + ' ' + 'access'
+    pepcli_invocation = ['pepcli', '--oauth-token-secret',  arguments.oauth_token_secret, '--oauth-token-group', '"Access Administrator"', 'ama', 'pgar', 'create', arguments.attribute, arguments.attribute,  'access']
     debug(pepcli_invocation)
     run(pepcli_invocation)
-    pepcli_invocation = 'pepcli --oauth-token-secret ' + arguments.oauth_token_secret + ' --oauth-token-group "Access Administrator" ama pgar create ' + arguments.attribute + ' ' + arguments.attribute + ' ' + 'enumerate'
+    pepcli_invocation = ['pepcli', '--oauth-token-secret', arguments.oauth_token_secret, '--oauth-token-group', '"Access Administrator"', 'ama', 'pgar', 'create', arguments.attribute, arguments.attribute, 'enumerate']
     debug(pepcli_invocation)
     run(pepcli_invocation)
 
     # Create a column access rule giving the user read-only access to the Visits column group
-    pepcli_invocation = 'pepcli --oauth-token-secret OAuthTokenSecret.json --oauth-token-group "Access Administrator" ama cgar create ' + arguments.column_group + arguments.attribute + 'read'
+    pepcli_invocation = ['pepcli', '--oauth-token-secret', arguments.oauth_token_secret, '--oauth-token-group', '"Access Administrator"', 'ama', 'cgar', 'create', arguments.column_group, arguments.attribute, 'read']
     debug(pepcli_invocation)
     run(pepcli_invocation)
 
     # Crete new participant
-    pepcli_invocation = 'pepcli --oauth-token-secret OAuthTokenSecret.json --oauth-token-group "Data Administrator" register participant --force --fist-name ' + arguments.first_name + ' --last-name ' + arguments.last_name + ' --middle-name ' + arguments.middle_name + ' --date-of-birth ' + arguments.date_of_birth
+    pepcli_invocation = ['pepcli', '--oauth-token-secret', arguments.oauth_token_secret, '--oauth-token-group', '"Data Administrator"', 'register', 'participant', '--force', '--fist-name', arguments.first_name, '--last-name', arguments.last_name, '--middle-name', arguments.middle_name, '--date-of-birth', arguments.date_of_birth]
     debug(pepcli_invocation)
     result = run(pepcli_invocation, capture_output=True)
     output = result.stdout.decode('utf-8')
@@ -67,6 +67,6 @@ if __name__ == '__main__':
     debug('extracted identifier: ' + identifier)
 
     # Add participant to the previously created participant group
-    pepcli_invocation = 'pepcli --oauth-token-secret OAuthTokenSecret.json --oauth-token-group "Data Administrator" ama group addTo ' + arguments.attribute + identifier
+    pepcli_invocation = ['pepcli', '--oauth-token-secret', arguments.oauth_token_secret, '--oauth-token-group', '"Data Administrator"', 'ama', 'group', 'addTo', arguments.attribute, identifier]
     debug(pepcli_invocation)
     run(pepcli_invocation)
