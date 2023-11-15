@@ -10,14 +10,14 @@ def arg_parser():
         prog='enroll',
         description='Automatizes the process of creating a new participant and giving him access to a column group'
     )
-    parser.add_argument('--oauth-token-secret', type=str, help='Path to OAuth token secret JSON file')
-    parser.add_argument('--attribute', type=str, help='Participant\'s IRMA credential')
-    parser.add_argument('--column-group', type=str, help='Column group to which the participant will be given access',
+    parser.add_argument('--oauth-token-secret', type=str, help='Path to OAuth token secret JSON file', required=True)
+    parser.add_argument('--attribute', type=str, help='Participant\'s IRMA credential', required=True)
+    parser.add_argument('--column-group', type=str, help='Column group to which the participant will be given access. Defaults to "Visits"',
                         required=False, default='Visits')
-    parser.add_argument('--date-of-birth', type=str, help='Participant\'s date of birth')
-    parser.add_argument('--first-name', type=str, help='Participant\'s first name')
-    parser.add_argument('--last-name', type=str, help='Participant\'s last name')
-    parser.add_argument('--middle-name', type=str, help='Participant\'s middle name', required=False, default='')
+    parser.add_argument('--date-of-birth', type=str, help='Participant\'s date of birth', required=True)
+    parser.add_argument('--first-name', type=str, help='Participant\'s first name', required=True)
+    parser.add_argument('--last-name', type=str, help='Participant\'s last name', required=True)
+    parser.add_argument('--middle-name', type=str, help='Participant\'s middle name. Defaults to an empty string', required=False, default='')
     args = parser.parse_args()
     return args
 
