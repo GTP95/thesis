@@ -7,7 +7,9 @@ import re
 def arg_parser():
     """Parse the command line argument --oauth-token-secret and the participant's IRMA credential."""
     parser = argparse.ArgumentParser(
-        description='Automatizes the process of creating a new participant and giving him access to a column group')
+        prog='enroll',
+        description='Automatizes the process of creating a new participant and giving him access to a column group'
+    )
     parser.add_argument('--oauth-token-secret', type=str, help='Path to OAuth token secret JSON file')
     parser.add_argument('--attribute', type=str, help='Participant\'s IRMA credential')
     parser.add_argument('--column-group', type=str, help='Column group to which the participant will be given access',
@@ -25,25 +27,25 @@ if __name__ == '__main__':
     arguments = arg_parser()
 
     # Create a new group
-    pepcli_invocation = 'pepcli --oauth-token-secret ' + arguments.oauth_token_secret + '--oauth-token-group "Access Administrator" asa group create ' + arguments.attribute
+    pepcli_invocation = 'pepcli --oauth-token-secret ' + arguments.oauth_token_secret + ' --oauth-token-group "Access Administrator" asa group create ' + arguments.attribute
     debug(pepcli_invocation)
     run(pepcli_invocation)
 
     # Add a new member to the group
-    pepcli_invocation = 'pepcli --oauth-token-secret ' + arguments.oauth_token_secret + '--oauth-token-group "Access Administrator" asa user addTo ' + arguments.attribute + ' ' + arguments.attribute
+    pepcli_invocation = 'pepcli --oauth-token-secret ' + arguments.oauth_token_secret + ' --oauth-token-group "Access Administrator" asa user addTo ' + arguments.attribute + ' ' + arguments.attribute
     debug(pepcli_invocation)
     run(pepcli_invocation)
 
     # Create a new participant group
-    pepcli_invocation = 'pepcli --oauth-token-secret ' + arguments.oauth_token_secret + '--oauth-token-group "Data Administrator" ama group create ' + arguments.attribute
+    pepcli_invocation = 'pepcli --oauth-token-secret ' + arguments.oauth_token_secret + ' --oauth-token-group "Data Administrator" ama group create ' + arguments.attribute
     debug(pepcli_invocation)
     run(pepcli_invocation)
 
     # Create participant group access rules giving the user access to the new participant group
-    pepcli_invocation = 'pepcli --oauth-token-secret ' + arguments.oauth_token_secret + '--oauth-token-group "Access Administrator" ama pgar create ' + arguments.attribute + ' ' + arguments.attribute + ' ' + 'access'
+    pepcli_invocation = 'pepcli --oauth-token-secret ' + arguments.oauth_token_secret + ' --oauth-token-group "Access Administrator" ama pgar create ' + arguments.attribute + ' ' + arguments.attribute + ' ' + 'access'
     debug(pepcli_invocation)
     run(pepcli_invocation)
-    pepcli_invocation = 'pepcli --oauth-token-secret ' + arguments.oauth_token_secret + '--oauth-token-group "Access Administrator" ama pgar create ' + arguments.attribute + ' ' + arguments.attribute + ' ' + 'enumerate'
+    pepcli_invocation = 'pepcli --oauth-token-secret ' + arguments.oauth_token_secret + ' --oauth-token-group "Access Administrator" ama pgar create ' + arguments.attribute + ' ' + arguments.attribute + ' ' + 'enumerate'
     debug(pepcli_invocation)
     run(pepcli_invocation)
 
