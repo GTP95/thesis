@@ -63,7 +63,7 @@ if __name__ == '__main__':
 
     # Extract the participant's identifier from the output
     pattern = re.compile(r"Generated participant with identifier: ([A-Za-z0-9]+)", re.IGNORECASE)
-    identifier = pattern.match(output).group(0)
+    identifier = pattern.match(output).group(1)
     debug('extracted identifier: ' + identifier)
 
     # Add participant to the previously created participant group
