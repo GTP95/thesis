@@ -72,3 +72,5 @@ if __name__ == '__main__':
     pepcli_invocation = ['pepcli', '--oauth-token-secret', arguments.oauth_token_secret, '--oauth-token-group', 'Data Administrator', 'ama', 'group', 'addTo', arguments.attribute, identifier]
     debug(pepcli_invocation)
     run(pepcli_invocation)
+
+    print("Participant added with identifier " + identifier)
