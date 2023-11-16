@@ -1,3 +1,5 @@
+#! /usr/bin/python
+
 import argparse
 from subprocess import run
 from debugprint import Debug
