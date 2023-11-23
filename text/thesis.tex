@@ -3,6 +3,7 @@
 \usepackage{biblatex}
 \usepackage{dsfont}
 \usepackage{mathtools}
+\usepackage[colorinlistoftodos]{todonotes}
 
 \addbibresource{bibliography.bib}
 
@@ -13,52 +14,99 @@
 \maketitle
 
 \begin{abstract}
-	Polymorphic Encryption and Pseudonymization (PEP) is a project developed at iHub to let researcher collect medical data of people taking part in studies, while preserving their 
+	Polymorphic Encryption and Pseudonimisation (PEP) is a project developed at iHub to let researcher collect medical data of people taking part in studies, while preserving their 
 	privacy. To do so, it uses ElGamal cipher's properties that allow to re-key and re-shuffle encrypted data. While this system effectively safeguards a participant's privacy, it 
-	also makes it non-trivial to design a way for the participants to access their own data: due to PEP's privacy goals, the typical login with username and password is out of
+	also makes it non-trivial to design a way for the participants to access their own data: due to PEP's privacy goals, the typical login with username and password is out of the
 	question. 
 \end{abstract}
 
 \section{Introduction}
-Polymorphic encryption and pseudonymisation (PEP) is a secure data repository that uses the ElGamal cipher to store data in encrypted form. Thanks to
-ElGamal's re-key operation, it is possible to store the data by an untrusted party and even before knowing who will need to get access to the data. Then the data
-can be subsequently re-keyed to grant access to the intended person or entity, without exposing the plaintext to the storage provider. An entity might need a global identifier for
-the people whose data is stored inside PEP, or to store an already existing identifier but without accessing the original identifier. To solve this problem, PEP uses ElGamal's
-re-shuffle operation, that lets derive many identifiers from a "base identifier" without disclosing that base identifier \cite{peppaper}. 
-PEP's current focus is healthcare, but its general architecture can be used for different purposes. The NOLAI \cite{nolai} [project? Institute?] recently announced that it will use PEP to
-collect their research data. \linebreak
+Polymorphic Encryption and Pseudonimisation (PEP) is a secure data repository with the goal of storing privacy-sensitive data while preserving the identity of the data owners as
+much as possible. From a high-level perspective, it looks like a traditional database, because it is structured as a two-dimensional table. But it is not a database, as it
+uses polymorphic encryption to protect the privacy and identity of the data owners, and it has the concept of data cards \cite{pep-blueprint}.\todo{Here I'm citing PEP's blueprint
+document, but it isn't public yet. Can I still cite it?}\par
+To store data in encrypted form, PEP uses the ElGamal cipher. Thanks to ElGamal's re-key operation, it is possible to store the data by an untrusted party even before knowing who
+will need to get access to the data. Then the data can be subsequently re-keyed to grant access to the intended person or entity, without exposing the plaintext to the storage provider.
+An entity might need a global identifier for the people whose data is stored inside PEP, or to store an already existing identifier but without accessing the original identifier. To
+solve this problem, PEP uses ElGamal's re-shuffle operation, that lets derive many identifiers from a "base identifier" without disclosing that base identifier \cite{peppaper}.\par
+To enable reproducibility of historical queries, PEP has the concept of data cards. Each piece of data is stored inside a data card which is in turn stored in one of the table's
+cells. If the data contained inside a cell needs to be updated, instead of deleting the already existing card, a new data card is generated and stored "on top" of the previous data
+card. Thus, each cell contains a deck of cards, and it is possible to see which data a query would have returned in a specific past point in time. \par
+PEP's current focus is healthcare, but its general architecture can be used for different purposes. NOLAI \cite{nolai} \cite{pepproject} recently announced that it will use PEP to
+collect their research data. \par
 A side effect of PEP's privacy focus is that it didn't ship with a way for study participants, or people whose data is stored inside PEP in general, to get access to their own data.
 This work is aimed at finding and developing a solution to this issue.
 
 \section{An introduction to PEP's internals}
-At the heart of PEP's design, are ElGamal's re-key and re-shuffle operations. To this cryptographic foundation, other elements are added to get a complete functional system. In
-particular, PEP uses a form of rule-based access control (RBAC) to manage users' privileges. It also employs hybrid cryptography for performance reasons. This section will first
-present a quick recap of ElGamal cipher and in particular of the re-key and re-shuffle operations. Then it will briefly discuss PEP's design and focus on PEP's way to manage users'
-privileges.
+At the heart of PEP's design, are ElGamal's re-randomize, re-key and re-shuffle operations. To this cryptographic foundation, other elements are added to get a complete functional system. In
+particular, PEP uses a form of role-based access control (RBAC)\cite{rbac} to manage users' privileges. It also employs hybrid cryptography for performance reasons and a
+distributed architecture to minimize the trust needed in each component. This section will first present a quick recap of ElGamal cipher and in particular of the re-randomize, re-key and re-shuffle
+operations. Then it will briefly discuss PEP's design and focus on PEP's way to manage users' privileges.
 
 \subsection{ElGamal recap}
 ElGamal is a public key cryptosystem based on the hardness of computing discrete logarithms \cite{elgamal}. It was originally devised to work on Galois fields, but it has since
-been adapted to work on elliptic curves. As PEP uses the latter version, this is the one that will be presented here. Assume Alice would like to send an encrypted message to Bob. First, Bob has to
-generate a keypair in the following way. He starts by choosing a prime number $p$, such that $p-1$ has at least one large prime factor. Then he picks a generator $g$ for
-the field $\mathds{F}_q$. Now he has to generate a uniformly random value $x_b \in \mathds{F}_q$ and compute $y_b=g^{x_b} \mod q$. $x_b$ is Bob's private key and $y_b$ is Bob's
-public key.\\
-We can now assume that Alice's message $m$ is such that $0 \leq m \leq q-1$. If this is not the case, Alice can split her message in $N \in \mathds{N}$ blocks such that $\forall n
-\leq N, 0 \leq m_n \leq q-1 $ and encrypt those separately. Now Alice first generates a uniformly random value $K \in \mathds{F}_q$, and then computes $K \equiv y_b^K \mod p$. She can
-then encrypt her message by computing 
+been adapted to work on elliptic curves \cite{elliptic-elgamal}. As PEP uses the latter version, this is the one that will be presented here.\\
+Assume Alice would like to send an encrypted message to Bob. First, Bob has to choose the domain parameters: a cyclic group composed by the points on an elliptic curve modulo a
+prime number, called $E(\mathds{F}_p)$, and a generator for such a group, called $G$. He then generates a keypair by generating a uniformly random $b \in \mathds{F}^*_q$ and computing
+$B=[b]G$. $b$ is Bob's private key, and $B$ is the public key.\\
+Now Alice needs to encode her message $m$ to $M \in E(\mathds{F}_q)$, i.e. a point on the curve. She can then proceed to encrypt it by generating a uniformly random nonce $a \in
+\mathds{F}^*_q$ and computing
 
-$$c_1 \equiv a^K \mod p$$
-$$c_2 \equiv km \mod p$$
+$$A=[a]G$$
+$$C=M+[a]B$$
 
-The ciphertext is the pair $(c_1, c_2)$. \\
+She then sends the pair $(A, C)$ to Bob. \\
+Bob decrypts the message by computing $M=C-[b]A$ and then decoding $M$ to $m$.
 
-Bob can decrypt the message by computing
+\subsubsection{Homomorphic property}
+ElGamal over elliptic curves is homomorphic with regards to addition. This is the basis for the re-randomize, re-key and re-shuffle operations used inside PEP \cite{peppaper}.
+\newline \newline
+Given a ciphertext $(A, C)$ where, as before, $A=[a]G$ and $C=M+[a]B$.
+\textbf{Re-randomization:} it is possible to derive a new ElGamal ciphertext that decrypts to the same plaintext as the original ciphertext, but is different from the original
+ciphertext. To obtain this, we pick a random $r \in \mathds{F}^*_q$ and compute $A'=[r]G+A$, $C'=[r]B+C$. The pair $(A', C')$ is the re-randomization of the pair $(A, C)$. \newline
+\textbf{Re-keying:} it is possible to obtain a new ElGamal ciphertext that decrypts to the same plaintext as the original ciphertext, but under a different private key. Assuming
+that we would like to obtain a new ciphertext encrypted using the public key $[k]B$ from a ciphertext that has been obtained using the public key $B$. We proceed by first
+finding $k^{-1} \in \mathds{F}_q$. Then we compute $A'=[k^{-1}]A$. The pair $(A', C)$ decrypts to the same plaintext as the pair $(A, C)$, but under a different private key $kb$.
+\newline
+\textbf{Re-shuffling:} it is possible to transform a ciphertext in a way that it decrypts to a re-shuffled version of the message M, i.e. it decrypts to $nM$ for some $n \in
+\mathds{F}_q$. To do this, we compute $A'=nA$ and $C'=nC$. The pair $(A', C')$ decrypts to $nM$. \newline
+For proofs of these properties, see \cite{pep-whitepaper}. 
 
-$$K \equiv c_1^{x_b} \mod p$$
-$$m \equiv c_2K^{-1} \mod p$$
+\subsection{Data structures}
+The main data structure used by PEP is a bidimensional table divided into rows and columns \cite{pep-blueprint}. Each row represents a study participant and each column either the 
+results of some medical test or some data used to support PEP's functionalities. The cells pertaining to exam results contain a deck of data cards. \par
+Each data card contains the actual results and some metadata. This part of the data card is encrypted using AES-256 \cite{AES-standard} in GCM mode \cite{GCM}. There is then an 
+additional field, containing the AES key encrypted using ElGamal over Curve25519 \cite{elliptic-elgamal}. Using hybrid Cryptography enables PEP to use ElGamal's properties at a 
+performance cost close to the one of using AES-256-GCM. \par
+If the data contained inside a data card needs to be updated, instead of deleting the card a new one is added "on top" of it, overlaying the old data. Subsequent queries will
+return the new data, unless a point in time is specified. In this case, the returned data is the data recorded in the data card that was on top of the deck at that specified
+time.
 
-\subsubsection{homomorphic properties}
-ElGamal is homomorphic with regards to exponentiation. 
+\subsection{Pseudonyms}
+As part of the registration procedure, each participant get assigned a participant identifier. This identifier isn't used directly, but instead it serves as a basis to generate
+local pseudonyms. These pseudonyms do not depend solely on the participant identifier, but also on the usage context: different studies involving the same participants or different
+researchers accessing the same dataset will get different local pseudonyms. These local pseudonyms are obtained by encrypting the participant's identifier using ElGamal, and then
+applying the re-shuffle operation \cite{pep-blueprint}. \par
+Sometimes it is necessary to generate an identifier to link the result of a specific test, e.g. a blood test, to a participant. To do this, PEP is able to generate short
+pseudonyms. These short pseudonyms aren't derived from the participant identifier, and are instead generated as a random number concatenated with a checksum to prevent
+transcription errors. These short pseudonyms are then recorded inside a specific column related to the specific exam they are used for \cite{pep-blueprint}.
 
+\subsection{Data access}
+This section mentions PEP users. These are in principle (and, before this thesis work gets implemented, also in  practice) different from study participants. A PEP user is someone
+that interacts with PEP, while a study participant is someone taking part in a study. \par
+To be able to interact with PEP's table, a user needs a ticket granting the correct permissions for the required operation. PEP implements a way to specify access rules for
+specific user groups, and then a specific user is assigned to a group. These rules are then used to determine whether to grant a ticket for a specific operation or not. This
+constitutes a form of role-based access control \cite{rbac}. To be able to bootstrap this permissions system, it is needed that someone has the right of writing rules for access
+groups, to specify access groups and to add users to groups. For this reason, PEP has two builtin access groups: "Data Administrator" and "Access Administrator" \cite{pep-blueprint}. A
+member of the former group is called a data administrator, and has the permissions needed to modify columns, column groups, and participant groups. A member of the latter group is
+called an access administrator, and has the right to modify the access rules used to issue tickets, modify and read the user list to issue authentication tokens, and manually issue
+authentication tokens. These two roles are given to distinct people, so that they would need to collude to access a specific piece of data.\todo{Think a bit about this}
+
+\subsection{authentication}
+
+
+
+\iffalse
 \section{How to give access to study participants}
 \subsection{Some initial ideas}
 The first idea to let users download their data from PEP was to use IRMA to disclose the data needed to generate the pseudonym to some component that then proceeds to generate it.
@@ -97,6 +145,8 @@ PEP uses rbac, let's use that too! First, create a column group containing all t
 containing only that participant. Create a new user and apply permissions as needed. And SBAM! You've got it! [Insert here actual participant enrollment procedure and provide
 details].
 \subsection{The pain of implementing the solution}
+
+\fi
 
 \printbibliography
 \end{document}
