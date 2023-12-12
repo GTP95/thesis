@@ -4,6 +4,8 @@
 \usepackage{dsfont}
 \usepackage{mathtools}
 \usepackage[colorinlistoftodos]{todonotes}
+\usepackage[bottom]{footmisc}
+\usepackage{hyperref}
 
 \addbibresource{bibliography.bib}
 
@@ -16,9 +18,12 @@
 \begin{abstract}
 	Polymorphic Encryption and Pseudonimisation (PEP) is a project developed at iHub to let researcher collect medical data of people taking part in studies, while preserving their 
 	privacy. To do so, it uses ElGamal cipher's properties that allow to re-key and re-shuffle encrypted data. While this system effectively safeguards a participant's privacy, it 
-	also makes it non-trivial to design a way for the participants to access their own data: due to PEP's privacy goals, the typical login with username and password is out of the
+	also makes it non-trivial to design a way for the participants to access their own data: due to PEP's privacy goals, the typical login with email and password is out of the
 	question. 
 \end{abstract}
+
+\tableofcontents
+\pagebreak
 
 \section{Introduction}
 Polymorphic Encryption and Pseudonimisation (PEP) is a secure data repository with the goal of storing privacy-sensitive data while preserving the identity of the data owners as
@@ -38,24 +43,29 @@ A side effect of PEP's privacy focus is that it didn't ship with a way for study
 This work is aimed at finding and developing a solution to this issue.
 
 \section{An introduction to PEP's internals}
+PEP's design principles are data and trust minimization. Data minimization consists in giving access to a party only to the data that specific party needs, in order to make
+participant identification difficult. Trust minimization consists in dividing PEP's architecture into multiple separate components operated by different parties. The goal is to
+prevent a single party from having access to the data: if multiple components need to cooperate to access the data, one doesn't have to trust that each single party will
+behave properly. Where this split is not possible, a special component called "transcyptor" keeps an auditable log of the operations performed. This is used to dissuade a party
+from misbehaving, as their malicious behavior will be recorded \cite{pep-blueprint}. \par
 At the heart of PEP's design, are ElGamal's re-randomize, re-key and re-shuffle operations. To this cryptographic foundation, other elements are added to get a complete functional system. In
-particular, PEP uses a form of role-based access control (RBAC)\cite{rbac} to manage users' privileges. It also employs hybrid cryptography for performance reasons and a
-distributed architecture to minimize the trust needed in each component. This section will first present a quick recap of ElGamal cipher and in particular of the re-randomize, re-key and re-shuffle
+particular, PEP uses a form of role-based access control (RBAC) \cite{rbac} to manage users' privileges. It also employs hybrid cryptography for performance reasons and a
+distributed architecture to minimize the trust needed in each component. This section will first present a quick recap of the ElGamal cipher and in particular of the re-randomize, re-key and re-shuffle
 operations. Then it will briefly discuss PEP's design and focus on PEP's way to manage users' privileges.
 
 \subsection{ElGamal recap}
 ElGamal is a public key cryptosystem based on the hardness of computing discrete logarithms \cite{elgamal}. It was originally devised to work on Galois fields, but it has since
-been adapted to work on elliptic curves \cite{elliptic-elgamal}. As PEP uses the latter version, this is the one that will be presented here.\\
+been adapted to work on elliptic curves \cite{elliptic-elgamal}. As PEP uses the latter version, this is the one that will be presented here.\par
 Assume Alice would like to send an encrypted message to Bob. First, Bob has to choose the domain parameters: a cyclic group composed by the points on an elliptic curve modulo a
 prime number, called $E(\mathds{F}_p)$, and a generator for such a group, called $G$. He then generates a keypair by generating a uniformly random $b \in \mathds{F}^*_q$ and computing
-$B=[b]G$. $b$ is Bob's private key, and $B$ is the public key.\\
+$B=[b]G$. $b$ is Bob's private key, and $B$ is the public key.\par
 Now Alice needs to encode her message $m$ to $M \in E(\mathds{F}_q)$, i.e. a point on the curve. She can then proceed to encrypt it by generating a uniformly random nonce $a \in
 \mathds{F}^*_q$ and computing
 
 $$A=[a]G$$
 $$C=M+[a]B$$
 
-She then sends the pair $(A, C)$ to Bob. \\
+She then sends the pair $(A, C)$ to Bob. \par
 Bob decrypts the message by computing $M=C-[b]A$ and then decoding $M$ to $m$.
 
 \subsubsection{Homomorphic property}
@@ -77,7 +87,9 @@ The main data structure used by PEP is a bidimensional table divided into rows a
 results of some medical test or some data used to support PEP's functionalities. The cells pertaining to exam results contain a deck of data cards. \par
 Each data card contains the actual results and some metadata. This part of the data card is encrypted using AES-256 \cite{AES-standard} in GCM mode \cite{GCM}. There is then an 
 additional field, containing the AES key encrypted using ElGamal over Curve25519 \cite{elliptic-elgamal}. Using hybrid Cryptography enables PEP to use ElGamal's properties at a 
-performance cost close to the one of using AES-256-GCM. \par
+performance cost close to the one of using AES-256-GCM. Using AES-256 instead of AES-128 or AES-192 is not for additional security, as other parts of PEP's design give 128 bits of
+security anyway. Rather, the reason is that a 256 bits key is similar in size to a point of the used curve, so this makes it straightforward to encode the AES key as a curve point
+without having to use any special encoding.\par
 If the data contained inside a data card needs to be updated, instead of deleting the card a new one is added "on top" of it, overlaying the old data. Subsequent queries will
 return the new data, unless a point in time is specified. In this case, the returned data is the data recorded in the data card that was on top of the deck at that specified
 time.
@@ -91,23 +103,103 @@ Sometimes it is necessary to generate an identifier to link the result of a spec
 pseudonyms. These short pseudonyms aren't derived from the participant identifier, and are instead generated as a random number concatenated with a checksum to prevent
 transcription errors. These short pseudonyms are then recorded inside a specific column related to the specific exam they are used for \cite{pep-blueprint}.
 
-\subsection{Data access}
-This section mentions PEP users. These are in principle (and, before this thesis work gets implemented, also in  practice) different from study participants. A PEP user is someone
-that interacts with PEP, while a study participant is someone taking part in a study. \par
+\subsection{Data access} \label{data_access}
+This and the next section mention PEP users. These are in principle (and, before this thesis work gets implemented, also in  practice) different from study participants. A PEP user is
+someone that interacts with PEP, while a study participant is someone taking part in a study. \par
 To be able to interact with PEP's table, a user needs a ticket granting the correct permissions for the required operation. PEP implements a way to specify access rules for
 specific user groups, and then a specific user is assigned to a group. These rules are then used to determine whether to grant a ticket for a specific operation or not. This
 constitutes a form of role-based access control \cite{rbac}. To be able to bootstrap this permissions system, it is needed that someone has the right of writing rules for access
 groups, to specify access groups and to add users to groups. For this reason, PEP has two builtin access groups: "Data Administrator" and "Access Administrator" \cite{pep-blueprint}. A
 member of the former group is called a data administrator, and has the permissions needed to modify columns, column groups, and participant groups. A member of the latter group is
 called an access administrator, and has the right to modify the access rules used to issue tickets, modify and read the user list to issue authentication tokens, and manually issue
-authentication tokens. These two roles are given to distinct people, so that they would need to collude to access a specific piece of data.\todo{Think a bit about this}
+authentication tokens. These two roles are given to distinct people, so that they would need to collude to access a specific piece of data. An Access Administrator could still
+give himself access to already existing groups. To dissuade the administrator from misbehaving, PEP logs rules creation and data access requests.
 
-\subsection{authentication}
+\subsection{Authentication and authorization}
+PEP's servers are authenticated using TLS certificates. Clients instead authenticate themselves to the servers using PEP certificates \cite{pep-blueprint}. This is different from
+TLS' mutual authentication mechanism, as the client signs a request which is then transmitted over TLS. Such signed request is logged by one of PEP's components for auditability. In
+both cases, the certificates are X.509 certificates \cite{X.509} issued by the PEP root certificate \cite{pep-blueprint}. PEP user certificates expire after a limited time and are
+generated on-demand during a procedure called enrolment. During this procedure, users authenticate themselves using an authentication token, and generate a certificate that is then
+signed by PEP. Programs that interact with users, request an authentication token using an HTTP API endpoint. In this case, the actual identity verification is done using the SAML
+standard \cite{sstc-saml-core-errata-2.0-wd-07} and SURFconext \cite{surfconext} as an identity provider. Once the user's identity is established, its access rights are determined
+by looking up a user list to determine the user's membership of any access group. 
 
+\subsubsection{SAML}
+Security Assertion Markup Language (SAML) is a security standard used to authenticate users and supporting Single Sign On (SSO) \cite{sstc-saml-core-errata-2.0-wd-07}. It defines
+the syntax and semantics for XML-encoded assertions regarding authentication, attributes, and authorization of a subject (an entity that is usually a user, but could in principle
+be a software component, a device or an entire organization) to other entities. It also defines protocols to exchange these information. SAML supports a number of usage scenarios, those 
+relevant for PEP's infrastructure are called "Identity Federation" and "SP-Initiated SSO". \par
+The SAML specification calls "Identity Federation" the scenario where two independent parties form an agreement about how to refer to a specific user that interacts with both
+parties. Only one of the two parties needs to be able to identify the user, and the other party will trust a SAML assertion generated by the first party about the user's identity. \par
+"SP-initiated SSO" stands for "Service Provider initiated Single Sign On" and is the procedure though which a service provider asks an identity provider to authenticate a user on
+its behalf. The identity provider will follow some procedure to perform the user authentication and, if the authentication is successful, will generate a SAML assertion containing
+the user's federated identity. For this scenario to work, the service provider and the identity provider need to have established a federated identity for the user in the past.\par
+PEP uses this two scenarios to authenticate (programs used by) users via an HTTP endpoint. The (program used by the) user first contacts the HTTP endpoint to request an
+authentication token. It is then redirected to SURFconext's identity provider and presented a login page. The user attempts to login and, if the login is successful, the identity
+provider generates a SAML assertion containing the user's federated identity. The user forwards this assertion to PEP's authentication server that proceeds to check this assertion
+and, if valid, generates the corresponding authentication token that is then sent to the user. This token is used during further interaction with other PEP components. 
+
+\subsubsection{RBAC}
+Role-Based Access Control (RBAC) is a form of non-discretionary access control that, contrary to Mandatory Access Control (MAC), is not based on multilevel security requirements \cite{rbac}. \par
+Compared to Discretional Access Control (DAC), RBAC does not let users transfer their access rights to someone else. Compared to MAC, instead of deciding whether to grant a user access 
+to a resource or not based on the confidentiality level of the resource and the user's security clearance, RBAC makes decisions based on the user's role within an organization and a set 
+of rules specifying each role's access level. \par
+DAC is typically used in the context of Operating Systems. The reason is that it is reasonable to assume that the creator of a file also owns that file, thus can decide who is
+allowed to access it. MAC is instead usually employed in the military sector, as typically in that scenario documents are classified based on their confidentiality, and people are
+given access rights based on their level inside a rigid hierarchy\footnote{By rigid hierarchy I mean that, given two people with different roles, it is always clear which of the two 
+has a superior role. Compare this with the situation inside a company, where two people can have different roles, but without one being higher in the company's hierarchy compared to
+the other.}. RBAC is often used in the commercial sector as the situation there is often in-between the scenarios of DAC and MAC: on one hand, employees working on a document
+typically don't own it, so they should not be able to decide on their own to give access to that document to other employees. On the other hand, a company doesn't have a strict
+hierarchy, and a person's level of access to resources depends more on this person's role inside the company rather than this person's place inside the company's hierarchy. This is
+also the case of PEP: researchers working inside different projects are at the same hierarchical level, but must be given access only to the data pertaining their own research. In
+other words, the data pertaining some research is not more or less secret than the data pertaining another research, but it can happen that researchers with the rights to access
+the data of some study should not be allowed to access the same kind of data but pertaining to a different study. At the same time, a researcher should not be allowed to transfer his
+own access level to another user. \par
+As mentioned in section \ref{data_access}, PEP implements RBAC by having a "Data Administrator" and an "Access Administrator". One defines a set of access permissions and the other
+links users with these rights. The act of defining access permissions is equivalent to defining roles, and the act of linking these rights with users is equivalent to assigning
+roles to users.
+
+\subsection{PEP servers}
+\begin{itemize}
+		\item Storage facility: stores the table and the data cards.
+		\item Access manager and transcryptor: issues tickets and keeps the access rules.
+		\item Key server: checks authentication tokens and signs users' PEP certificates.
+		\item Authentication server: keeps the users list and generates authentication tokens. 
+		\item Registration server: generates the participant identifiers and the short pseudonyms.
+\end{itemize}
+
+\subsection{Data Access Flow}
+This section presents a more detailed overview of PEP's current flow to access the data. 
+
+\section{How to give access to study participants}
+\subsection{Failed attempt}
+At the beginning of this work, I considered many possible solutions, that either turned out to not respect PEP's privacy standard or were deemed risky by the PEP team. Other
+solutions, instead, while feasible in theory, failed in practice. This section briefly presents one of those of the latter category, as it would have made for a clean solution that
+nicely integrates with the rest of PEP's architecture. \par
+As PEP already uses the SAML standard \cite{sstc-saml-core-errata-2.0-wd-07} for authentication and the OAuth standard \cite{OAuth} for authorization, it would be natural to implement a 
+SAML authentication provider using IRMA \cite{irma-app}.
+This is how the registration and authentication flows would have looked like with this solution. \todo{Somehow add BPMN diagrams}
+To implement this, I tried setting up SimpleSAMLphp \cite{simplesamlphp} to work as an IRMA \cite{about-irma} identity provider. SimpleSAMLphp can work both as a service provider and
+as an identity provider, and can be extended by writing PHP plugins. There were already two previous attempts about writing such a plugin: 
+"simplesamlphp-module-authirma" \cite{simplesamlphp-module-authirma} by the Privacy by Design Foundation \cite{privacybydesignfoundation} and "irma-idp" \cite{irma-idp} by SURF \cite{surf}.
+Both appear to be unmaintained, but I attempted to use those as a basis for my own implementation. \par
+I started by setting up a local IRMA server inside a Docker container and creating a demo credential for PEP study participants, called "demo.PEP.id" \todo{check credential name}. I
+then tried making "simplesamlphp-module-authirma" work again. It was developed at a time where the IRMA HTTP server and the IRMA JSON API server where two separate components. While
+trying to make it work again, I stumbled upon the problem of getting the keys for the API and web servers. Probably the key is the same for both, as now the irmago
+server \cite{irma-docs-server} implements both, but I was not able to find the certificate in the required format inside my Docker container. \par
+After failing to make "simplesamlphp-module-authirma" work again, I did some more research on previous work and found out about "irma-idp". It is more recent and, while it still
+appears to be unmaintained, at least uses the current architecture where irmago provides both the HTTP server and JSON API server components \cite{irma-docs-server}. But this
+project lacks configuration instructions and, again, I was not able to find the required certificate by trying the method reported in the repository's README \cite{irma-idp}. I asked for 
+clarification in a GitHub issue, but to date I got no answer \cite{irma-idp-issue}. Additionally, looking at the code inside the repository it looked to either be incomplete or
+contain an error: the HTML code inside the "disclose.html" file contains a "Verify attribute" that does not do anything, and there is no way to trigger the redirect specified
+inside the form. Likely the idea was to redirect the user upon clicking the aforementioned button, but in this case the code should have been written differently. \par
+Since "simplesamlphp-module-authirma" is unmaintained and targeted an old IRMA server implementation, and "irma-idp" appears to be abandoned in a non-working state and with lacking
+documentation, I decided to write my own SimpleSAMLphp plugin instead of adapting old projects to work with the new irmago implementation. This is because attempting to fix these
+old implementations could have entailed a significant rewrite of their code, so I decided to start afresh. I installed and configured SimpleSAMLphp \cite{simplesamlphp-docs} as a SAML identity
+provider \cite{sstc-saml-core-errata-2.0-wd-07} inside a Docker container, then I followed its documentation to write an authentication source talking with an IRMA server. 
 
 
 \iffalse
-\section{How to give access to study participants}
 \subsection{Some initial ideas}
 The first idea to let users download their data from PEP was to use IRMA to disclose the data needed to generate the pseudonym to some component that then proceeds to generate it.
 This doesn't work because the pseudonym is generated by encrypting a random string. But this string gets stored inside Salesforce, so the next idea was to interface with
@@ -131,22 +223,22 @@ Since this first idea was discarded, I considered the following approaches:
 
 The first approach could pose unnecessary risks. The participant's pseudonym is used to obtain the re-shuffled pseudnyms that identify the participant in different studies and in
 different datasets. To be able to derive these pseudonyms, an attacker would also need to get the re-shuffle key, but not leaking the pseudonym outside of PEP in the first place would still be
-better. \\
+better. \par
 The second approach would solve the problem of leaking the participant's pseudonym, but participants would still need to be provided with some key material to ab able to decrypt
-the data once downloaded. [Is this true though? Couldn't this just work the same as I have it implemented now?]. \\
+the data once downloaded. [Is this true though? Couldn't this just work the same as I have it implemented now?]. \par
 In a similar fashion to the previous approach, it would be possible to create a fake study inside PEP with a single participant, one for each user. Then the users would be given
 the researcher role inside their own fake study to be able to access their own data. Also this option would require to provide them with some key material, opening the door to keym
-management issues [again, is this actually needed? See also previous note]. \\
+management issues [again, is this actually needed? See also previous note]. \par
 The last approach is a way to sidestep the issue of providing study participants with their own pseudonym or a re-shuffled pseudonym. But it would require some way of linking the
-IRMA identity to the participant.\\
+IRMA identity to the participant.\par
 
 \subsection{The chosen solution}
 PEP uses rbac, let's use that too! First, create a column group containing all the columns pertaining to exam results. Then, for each participant, create a new participant group
 containing only that participant. Create a new user and apply permissions as needed. And SBAM! You've got it! [Insert here actual participant enrollment procedure and provide
 details].
 \subsection{The pain of implementing the solution}
-
 \fi
+
 
 \printbibliography
 \end{document}
