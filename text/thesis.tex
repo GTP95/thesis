@@ -6,6 +6,8 @@
 \usepackage[colorinlistoftodos]{todonotes}
 \usepackage[bottom]{footmisc}
 \usepackage{hyperref}
+\usepackage{svg}
+\graphicspath{ {./images/} }
 
 \addbibresource{bibliography.bib}
 
@@ -57,10 +59,10 @@ operations. Then it will briefly discuss PEP's design and focus on PEP's way to 
 ElGamal is a public key cryptosystem based on the hardness of computing discrete logarithms \cite{elgamal}. It was originally devised to work on Galois fields, but it has since
 been adapted to work on elliptic curves \cite{elliptic-elgamal}. As PEP uses the latter version, this is the one that will be presented here.\par
 Assume Alice would like to send an encrypted message to Bob. First, Bob has to choose the domain parameters: a cyclic group composed by the points on an elliptic curve modulo a
-prime number, called $E(\mathds{F}_p)$, and a generator for such a group, called $G$. He then generates a keypair by generating a uniformly random $b \in \mathds{F}^*_q$ and computing
+prime number, called $E(\mathds{F}_p)$, and a generator for such a group, called $G$. He then generates a keypair by generating a uniformly random $b \in \mathds{F}^*_p$ and computing
 $B=[b]G$. $b$ is Bob's private key, and $B$ is the public key.\par
-Now Alice needs to encode her message $m$ to $M \in E(\mathds{F}_q)$, i.e. a point on the curve. She can then proceed to encrypt it by generating a uniformly random nonce $a \in
-\mathds{F}^*_q$ and computing
+Now Alice needs to encode her message $m$ to $M \in E(\mathds{F}_p)$, i.e. a point on the curve. She can then proceed to encrypt it by generating a uniformly random nonce $a \in
+\mathds{F}^*_p$ and computing
 
 $$A=[a]G$$
 $$C=M+[a]B$$
@@ -72,14 +74,14 @@ Bob decrypts the message by computing $M=C-[b]A$ and then decoding $M$ to $m$.
 ElGamal over elliptic curves is homomorphic with regards to addition. This is the basis for the re-randomize, re-key and re-shuffle operations used inside PEP \cite{peppaper}.
 \newline \newline
 Given a ciphertext $(A, C)$ where, as before, $A=[a]G$ and $C=M+[a]B$.
-\textbf{Re-randomization:} it is possible to derive a new ElGamal ciphertext that decrypts to the same plaintext as the original ciphertext, but is different from the original
-ciphertext. To obtain this, we pick a random $r \in \mathds{F}^*_q$ and compute $A'=[r]G+A$, $C'=[r]B+C$. The pair $(A', C')$ is the re-randomization of the pair $(A, C)$. \newline
+\textbf{Re-randomization:} it is possible to derive a new ElGamal ciphertext that decrypts to the same plaintext under the same key as the original ciphertext, but is different
+from the original ciphertext. To obtain this, we pick a random $r \in \mathds{F}^*_p$ and compute $A'=[r]G+A$, $C'=[r]B+C$. The pair $(A', C')$ is the re-randomization of the pair $(A, C)$. \newline
 \textbf{Re-keying:} it is possible to obtain a new ElGamal ciphertext that decrypts to the same plaintext as the original ciphertext, but under a different private key. Assuming
 that we would like to obtain a new ciphertext encrypted using the public key $[k]B$ from a ciphertext that has been obtained using the public key $B$. We proceed by first
-finding $k^{-1} \in \mathds{F}_q$. Then we compute $A'=[k^{-1}]A$. The pair $(A', C)$ decrypts to the same plaintext as the pair $(A, C)$, but under a different private key $kb$.
+finding $k^{-1} \in \mathds{F}_p$. Then we compute $A'=[k^{-1}]A$. The pair $(A', C)$ decrypts to the same plaintext as the pair $(A, C)$, but under a different private key $kb$.
 \newline
-\textbf{Re-shuffling:} it is possible to transform a ciphertext in a way that it decrypts to a re-shuffled version of the message M, i.e. it decrypts to $nM$ for some $n \in
-\mathds{F}_q$. To do this, we compute $A'=nA$ and $C'=nC$. The pair $(A', C')$ decrypts to $nM$. \newline
+\textbf{Re-shuffling:} it is possible to transform a ciphertext in a way that it decrypts to a re-shuffled version of the message M under the same key, i.e. it decrypts to $nM$ for
+some $n \in \mathds{F}_p$. To do this, we compute $A'=nA$ and $C'=nC$. The pair $(A', C')$ decrypts to $nM$. \newline
 For proofs of these properties, see \cite{pep-whitepaper}. 
 
 \subsection{Data structures}
@@ -89,7 +91,7 @@ Each data card contains the actual results and some metadata. This part of the d
 additional field, containing the AES key encrypted using ElGamal over Curve25519 \cite{elliptic-elgamal}. Using hybrid Cryptography enables PEP to use ElGamal's properties at a 
 performance cost close to the one of using AES-256-GCM. Using AES-256 instead of AES-128 or AES-192 is not for additional security, as other parts of PEP's design give 128 bits of
 security anyway. Rather, the reason is that a 256 bits key is similar in size to a point of the used curve, so this makes it straightforward to encode the AES key as a curve point
-without having to use any special encoding.\par
+without having to use any special encoding.\todo{Maybe I should add more details about this?}\par
 If the data contained inside a data card needs to be updated, instead of deleting the card a new one is added "on top" of it, overlaying the old data. Subsequent queries will
 return the new data, unless a point in time is specified. In this case, the returned data is the data recorded in the data card that was on top of the deck at that specified
 time.
@@ -118,11 +120,11 @@ give himself access to already existing groups. To dissuade the administrator fr
 \subsection{Authentication and authorization}
 PEP's servers are authenticated using TLS certificates. Clients instead authenticate themselves to the servers using PEP certificates \cite{pep-blueprint}. This is different from
 TLS' mutual authentication mechanism, as the client signs a request which is then transmitted over TLS. Such signed request is logged by one of PEP's components for auditability. In
-both cases, the certificates are X.509 certificates \cite{X.509} issued by the PEP root certificate \cite{pep-blueprint}. PEP user certificates expire after a limited time and are
-generated on-demand during a procedure called enrolment. During this procedure, users authenticate themselves using an authentication token, and generate a certificate that is then
-signed by PEP. Programs that interact with users, request an authentication token using an HTTP API endpoint. In this case, the actual identity verification is done using the SAML
-standard \cite{sstc-saml-core-errata-2.0-wd-07} and SURFconext \cite{surfconext} as an identity provider. Once the user's identity is established, its access rights are determined
-by looking up a user list to determine the user's membership of any access group. 
+both cases, the certificates are X.509 certificates \cite{X.509} issued by the PEP root certificate \cite{pep-blueprint}. \par
+PEP user certificates expire after a limited time and are generated on-demand during a procedure called enrolment. 
+There are two ways a user can obtain a PEP certificate. In the first scenario, users authenticate themselves using an authentication token, and generate a certificate that is then
+signed by PEP. The token is generated and given them by the access administrator, who also performs the user identification. \par
+In the second scenario, a program requests an authentication token for the user using an HTTP API endpoint. In this case, the actual identity verification is done using the SAML standard \cite{sstc-saml-core-errata-2.0-wd-07} and SURFconext \cite{surfconext} as an identity provider. Once the user's identity is established, its access rights are determined by looking up a user list to determine the user's membership of any access group. 
 
 \subsubsection{SAML}
 Security Assertion Markup Language (SAML) is a security standard used to authenticate users and supporting Single Sign On (SSO) \cite{sstc-saml-core-errata-2.0-wd-07}. It defines
@@ -134,10 +136,11 @@ parties. Only one of the two parties needs to be able to identify the user, and 
 "SP-initiated SSO" stands for "Service Provider initiated Single Sign On" and is the procedure though which a service provider asks an identity provider to authenticate a user on
 its behalf. The identity provider will follow some procedure to perform the user authentication and, if the authentication is successful, will generate a SAML assertion containing
 the user's federated identity. For this scenario to work, the service provider and the identity provider need to have established a federated identity for the user in the past.\par
-PEP uses this two scenarios to authenticate (programs used by) users via an HTTP endpoint. The (program used by the) user first contacts the HTTP endpoint to request an
-authentication token. It is then redirected to SURFconext's identity provider and presented a login page. The user attempts to login and, if the login is successful, the identity
-provider generates a SAML assertion containing the user's federated identity. The user forwards this assertion to PEP's authentication server that proceeds to check this assertion
-and, if valid, generates the corresponding authentication token that is then sent to the user. This token is used during further interaction with other PEP components. 
+As anticipated at the beginning of this section, PEP uses this two scenarios to authenticate (programs used by) users via an HTTP endpoint. The (program used by the) user first contacts 
+the HTTP endpoint to request an authentication token. It is then redirected to SURFconext's identity provider and presented a login page. The user attempts to login and, if the login is 
+successful, the identity provider generates a SAML assertion containing the user's federated identity. The user forwards this assertion to PEP's authentication server that proceeds to 
+check this assertion and, if valid, generates the corresponding authentication token that is then sent to the user. This token is used during further interaction with other PEP 
+components. 
 
 \subsubsection{RBAC}
 Role-Based Access Control (RBAC) is a form of non-discretionary access control that, contrary to Mandatory Access Control (MAC), is not based on multilevel security requirements \cite{rbac}. \par
@@ -155,21 +158,34 @@ also the case of PEP: researchers working inside different projects are at the s
 other words, the data pertaining some research is not more or less secret than the data pertaining another research, but it can happen that researchers with the rights to access
 the data of some study should not be allowed to access the same kind of data but pertaining to a different study. At the same time, a researcher should not be allowed to transfer his
 own access level to another user. \par
-As mentioned in section \ref{data_access}, PEP implements RBAC by having a "Data Administrator" and an "Access Administrator". One defines a set of access permissions and the other
-links users with these rights. The act of defining access permissions is equivalent to defining roles, and the act of linking these rights with users is equivalent to assigning
-roles to users.
+As mentioned in section \ref{data_access}, PEP implements RBAC by having a "data administrator" and an "access administrator". The first defines a set of access permissions and the
+second links users with these rights. The act of defining access permissions is equivalent to defining roles, and the act of linking these rights with users is equivalent to assigning
+roles to users. 
 
 \subsection{PEP servers}
+Here is a list of the main server components of PEP. The access manager mentioned here is a piece of software, and should not be confused with the access administrator role mentioned
+earlier, i.e. a person with the right to give users access to the datasets defined by the data administrator.
 \begin{itemize}
 		\item Storage facility: stores the table and the data cards.
-		\item Access manager and transcryptor: issues tickets and keeps the access rules.
+		\item Access manager and transcryptor: issue tickets and keep the access rules.
 		\item Key server: checks authentication tokens and signs users' PEP certificates.
 		\item Authentication server: keeps the users list and generates authentication tokens. 
 		\item Registration server: generates the participant identifiers and the short pseudonyms.
 \end{itemize}
 
 \subsection{Data Access Flow}
-This section presents a more detailed overview of PEP's current flow to access the data. 
+This section presents a concise overview of PEP's current flow to access the data. For the detailed message exchange that happens in each of the following phases, see
+\cite{pep-blueprint}.
+
+\subsubsection{Authentication}
+The data access flow starts with the user contacting PEP's authentication server. It redirects the user to the SurfConext identity provider, and the user has to authenticate to
+that service. If the authentication is successful, the identity provider generates a SAML assertion that the user's browser forwards to PEP's authentication server. Based on the
+SAML assertion, the authentication server sends the user an authentication token.
+
+
+\subsubsection{Enrollment}
+In this phase, a user obtains a PEP certificate and his own ElGamal private key needed to decrypt the data. \par
+It starts with the user contacting PEP's key server and presenting its authentication token. 
 
 \section{How to give access to study participants}
 \subsection{Failed attempt}
@@ -178,7 +194,12 @@ solutions, instead, while feasible in theory, failed in practice. This section b
 nicely integrates with the rest of PEP's architecture. \par
 As PEP already uses the SAML standard \cite{sstc-saml-core-errata-2.0-wd-07} for authentication and the OAuth standard \cite{OAuth} for authorization, it would be natural to implement a 
 SAML authentication provider using IRMA \cite{irma-app}.
-This is how the registration and authentication flows would have looked like with this solution. \todo{Somehow add BPMN diagrams}
+This is how the registration and authentication flows would have looked like with this solution. 
+\begin{figure}[p]
+	\includesvg[angle=90, scale=0.25]{data_access_failed_attempt}
+	\centering
+\end{figure}
+
 To implement this, I tried setting up SimpleSAMLphp \cite{simplesamlphp} to work as an IRMA \cite{about-irma} identity provider. SimpleSAMLphp can work both as a service provider and
 as an identity provider, and can be extended by writing PHP plugins. There were already two previous attempts about writing such a plugin: 
 "simplesamlphp-module-authirma" \cite{simplesamlphp-module-authirma} by the Privacy by Design Foundation \cite{privacybydesignfoundation} and "irma-idp" \cite{irma-idp} by SURF \cite{surf}.
@@ -197,7 +218,6 @@ Since "simplesamlphp-module-authirma" is unmaintained and targeted an old IRMA s
 documentation, I decided to write my own SimpleSAMLphp plugin instead of adapting old projects to work with the new irmago implementation. This is because attempting to fix these
 old implementations could have entailed a significant rewrite of their code, so I decided to start afresh. I installed and configured SimpleSAMLphp \cite{simplesamlphp-docs} as a SAML identity
 provider \cite{sstc-saml-core-errata-2.0-wd-07} inside a Docker container, then I followed its documentation to write an authentication source talking with an IRMA server. 
-
 
 \iffalse
 \subsection{Some initial ideas}
