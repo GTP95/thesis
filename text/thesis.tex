@@ -7,31 +7,37 @@
 \usepackage[bottom]{footmisc}
 \usepackage{hyperref}
 \usepackage{svg}
+\usepackage[utf8]{inputenc}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{amsthm}
+\usepackage{cancel}
+
 \graphicspath{ {./images/} }
 
 \addbibresource{bibliography.bib}
 
 \begin{document}
 
-\title{Designing and implementing a participant login solution for PEP using IRMA}
+\title{Designing and implementing a participant login solution for PEP using YIVI}
 \author{Giacomo Tommaso Petrucci}
 \maketitle
 
 \begin{abstract}
-	Polymorphic Encryption and Pseudonimisation (PEP) is a project developed at iHub to let researcher collect medical data of people taking part in studies, while preserving their 
-	privacy. To do so, it uses ElGamal cipher's properties that allow to re-key and re-shuffle encrypted data. While this system effectively safeguards a participant's privacy, it 
-	also makes it non-trivial to design a way for the participants to access their own data: due to PEP's privacy goals, the typical login with email and password is out of the
-	question. 
+	Polymorphic Encryption and Pseudonimisation (PEP) is both a technology and a project developed at iHub to let researcher collect medical data of people taking part in studies, 
+	while preserving their privacy. To do so, it uses ElGamal cipher's properties that allow to re-key and re-shuffle encrypted data and participant identifiers called local 
+	pseudonyms. While this system effectively safeguards a participant's privacy, it also makes it non-trivial to design a way for the participants to access their own data: due to 
+	PEP's privacy goals, the typical login with email and password is out of the question. This thesis presents a conceptual design for a login system for study participants that
+	is in line with PEP's data protection goals and a proof of concept implementation of such system. 
 \end{abstract}
 
 \tableofcontents
 \pagebreak
 
 \section{Introduction}
-Polymorphic Encryption and Pseudonimisation (PEP) is a secure data repository with the goal of storing privacy-sensitive data while preserving the identity of the data owners as
-much as possible. From a high-level perspective, it looks like a traditional database, because it is structured as a two-dimensional table. But it is not a database, as it
-uses polymorphic encryption to protect the privacy and identity of the data owners, and it has the concept of data cards \cite{pep-blueprint}.\todo{Here I'm citing PEP's blueprint
-document, but it isn't public yet. Can I still cite it?}\par
+Polymorphic Encryption and Pseudonimisation (PEP) is a secure data repository with the goal of storing privacy-sensitive data while preserving the identity and data of participants
+in medical studies as much as possible. From a high-level perspective, it looks like a traditional database, because it is structured as a two-dimensional table. But it is not a 
+database, as it uses polymorphic encryption to protect the privacy and identity of the study participants, and it has the concept of data cards \cite{pep-blueprint}.\par
 To store data in encrypted form, PEP uses the ElGamal cipher. Thanks to ElGamal's re-key operation, it is possible to store the data by an untrusted party even before knowing who
 will need to get access to the data. Then the data can be subsequently re-keyed to grant access to the intended person or entity, without exposing the plaintext to the storage provider.
 An entity might need a global identifier for the people whose data is stored inside PEP, or to store an already existing identifier but without accessing the original identifier. To
@@ -40,8 +46,10 @@ To enable reproducibility of historical queries, PEP has the concept of data car
 cells. If the data contained inside a cell needs to be updated, instead of deleting the already existing card, a new data card is generated and stored "on top" of the previous data
 card. Thus, each cell contains a deck of cards, and it is possible to see which data a query would have returned in a specific past point in time. \par
 PEP's current focus is healthcare, but its general architecture can be used for different purposes. NOLAI \cite{nolai} \cite{pepproject} recently announced that it will use PEP to
-collect their research data. \par
-A side effect of PEP's privacy focus is that it didn't ship with a way for study participants, or people whose data is stored inside PEP in general, to get access to their own data.
+collect their research data in the education field. \par
+A side effect of PEP's privacy focus is that it didn't ship with a way for study participants, or people whose data is stored inside PEP in general, to get access to their own
+data. This constitutes a problem, as article 15 of the GDPR states that "The data subject shall have the right to obtain from the controller confirmation as to whether or not
+personal data concerning him or her are being processed, and, where that is the case, access to the personal data [...]" \cite{gdpr-art-15}. 
 This work is aimed at finding and developing a solution to this issue.
 
 \section{An introduction to PEP's internals}
@@ -59,7 +67,7 @@ operations. Then it will briefly discuss PEP's design and focus on PEP's way to 
 ElGamal is a public key cryptosystem based on the hardness of computing discrete logarithms \cite{elgamal}. It was originally devised to work on Galois fields, but it has since
 been adapted to work on elliptic curves \cite{elliptic-elgamal}. As PEP uses the latter version, this is the one that will be presented here.\par
 Assume Alice would like to send an encrypted message to Bob. First, Bob has to choose the domain parameters: a cyclic group composed by the points on an elliptic curve modulo a
-prime number, called $E(\mathds{F}_p)$, and a generator for such a group, called $G$. He then generates a keypair by generating a uniformly random $b \in \mathds{F}^*_p$ and computing
+prime number, called $E(\mathds{F}_p)$, and a generator for such a group, called $G \in E(\mathds{F}_p)$. He then generates a keypair by generating a uniformly random $b \in \mathds{F}^*_p$ and computing
 $B=[b]G$. $b$ is Bob's private key, and $B$ is the public key.\par
 Now Alice needs to encode her message $m$ to $M \in E(\mathds{F}_p)$, i.e. a point on the curve. She can then proceed to encrypt it by generating a uniformly random nonce $a \in
 \mathds{F}^*_p$ and computing
@@ -67,55 +75,141 @@ Now Alice needs to encode her message $m$ to $M \in E(\mathds{F}_p)$, i.e. a poi
 $$A=[a]G$$
 $$C=M+[a]B$$
 
-She then sends the pair $(A, C)$ to Bob. \par
-Bob decrypts the message by computing $M=C-[b]A$ and then decoding $M$ to $m$.
+She then sends the pair $(A, C)$ to Bob. \newline
+\par
+Bob decrypts the message by computing $M=C-[b]A$ and then decoding $M$ to $m$. This works because, by substituting back the definition for each term of the computation, we obtain
+		$$C-[b]A=M+[a]B-[b][a]G=M+[a][b]G-[b][a]G=M$$ 
+The last step follows from the commutative property of point addition over an elliptic curve and the existence of the additive inverse.
 
 \subsubsection{Homomorphic property}
-ElGamal over elliptic curves is homomorphic with regards to addition. This is the basis for the re-randomize, re-key and re-shuffle operations used inside PEP \cite{peppaper}.
+ElGamal over elliptic curves is homomorphic with regards to addition: given an encoded message $M \in E(\mathds{F}_p)$ and a point $p \in E(\mathds{F}_p)$, computing $R=M+p$ and
+then encrypting $R$ gives the same result as first encrypting $M$ and then summing $p$ to the obtained ciphertext. This can be easily proven by explicitly carrying the computations
+in the two cases and observing that they give the same result.
+
+\begin{proof}
+Assuming that Alice and Bob choose the same parameters as above, this is what Alice obtains during the encryption process in the two scenarios:
+\newline \newline
+\textit{First scenario: sum and then encrypt}
+$$A=[a]G$$
+$$R=M+p$$
+$$C_1=R+[a]B=M+p+[a]B$$ 
+The obtained ciphertext is the pair $(A, C_1)$.
+\newline \newline
+\textit{Second scenario: encrypt and then sum}
+$$A=[a]G$$
+$$C_2=M+[a]B$$
+$$C_2^{'}=C_2+p=M+[a]B+p$$
+The obtained ciphertext is the pair $(A, C_2^{'})$.
+\newline \newline
+Due to the commutativity of point addition on an elliptic curve, $C_1=C_2^{'}$, thus $(A, C_1)=(A, C_2^{'})$.
+\end{proof}
+
+This is the basis for the re-randomize, re-key and re-shuffle operations used inside PEP \cite{peppaper}.
 \newline \newline
 Given a ciphertext $(A, C)$ where, as before, $A=[a]G$ and $C=M+[a]B$.
 \textbf{Re-randomization:} it is possible to derive a new ElGamal ciphertext that decrypts to the same plaintext under the same key as the original ciphertext, but is different
-from the original ciphertext. To obtain this, we pick a random $r \in \mathds{F}^*_p$ and compute $A'=[r]G+A$, $C'=[r]B+C$. The pair $(A', C')$ is the re-randomization of the pair $(A, C)$. \newline
+from the original ciphertext. To obtain this, we pick a random $r \in \mathds{F}^*_p \setminus \{1\}$ and compute $A'=[r]G+A$, $C'=[r]B+C$. The pair $(A', C')$ is the re-randomization of the pair $(A, C)$. \newline
+\begin{proof} \label{re-randomization-proof}
+		It is trivial to see that the pair $(A', C')$ differs from the pair $(A, C)$, as $r \not\equiv 1 \mod p$. It remains to be shown that $(A', C')$ decrypts
+		to the same plaintext as $(A, C)$, when using the same key. This can be proven by explicitly carrying the decryption process for both ciphertexts. \newline
+		\textit{Decryption of $(A, C)$:} \newline
+		$$C-[b]A=M+[a]B-[b][a]G=M+[a][b]G-[b][a]G=M$$
+\newline
+		\textit{Decryption of $(A', C')$:} \newline
+		$$C'-[b]A'=[r]B+C-[b]([r]G+A)=\cancel{[r][b]G}+M+[a]B \cancel{-[b][r]G}-[b]A=$$
+		$$=M \cancel{+[a][b]G} \cancel{-[b][a]G}=M$$
+\newline \newline
+In both cases, the decryption process produces the same encoded message $M$.
+\end{proof}
+
 \textbf{Re-keying:} it is possible to obtain a new ElGamal ciphertext that decrypts to the same plaintext as the original ciphertext, but under a different private key. Assuming
 that we would like to obtain a new ciphertext encrypted using the public key $[k]B$ from a ciphertext that has been obtained using the public key $B$. We proceed by first
 finding $k^{-1} \in \mathds{F}_p$. Then we compute $A'=[k^{-1}]A$. The pair $(A', C)$ decrypts to the same plaintext as the pair $(A, C)$, but under a different private key $kb$.
 \newline
+\begin{proof}
+		Decrypting the pair $(A, C)$ using the private key $b$ gives the encoded message $M$, as shown in \ref{re-randomization-proof}. We now show that decrypting the
+		pair $(A', C)$ using the private key $kb$ still gives the encoded message $M$. This is again proved by explicitly writing the decryption process:
+		$$C-[kb]A'=M+[a]B-[kb]A'=M+[ab]G-[kbk^{-1}]A=M+[ab]G-[b]A=$$
+		$$=M+[ab]G-[ba]G=M$$
+\end{proof}
+
 \textbf{Re-shuffling:} it is possible to transform a ciphertext in a way that it decrypts to a re-shuffled version of the message M under the same key, i.e. it decrypts to $nM$ for
-some $n \in \mathds{F}_p$. To do this, we compute $A'=nA$ and $C'=nC$. The pair $(A', C')$ decrypts to $nM$. \newline
-For proofs of these properties, see \cite{pep-whitepaper}. 
+some $n \in \mathds{F}_p$. To do this, we compute $A'=nA$ and $C'=nC$. The pair $(A', C')$ decrypts to $[n]M$. \newline
+\begin{proof}
+		By explicitly writing the decryption process, we obtain:
+		$$C'-[b]A'=[n]C-[bn]A=[n](M+[a]B)-[bna]G=[n]M+[na]B-[bna]G=$$
+		$$=[n]M+[nab]G-[bna]G=[n]M$$
+\end{proof}
 
 \subsection{Data structures}
 The main data structure used by PEP is a bidimensional table divided into rows and columns \cite{pep-blueprint}. Each row represents a study participant and each column either the 
-results of some medical test or some data used to support PEP's functionalities. The cells pertaining to exam results contain a deck of data cards. \par
+results of some medical test or some data used to support PEP's functionalities, like a timestamp used to produce point-in-time queries. The cells pertaining to exam results contain a deck of data cards. \par
 Each data card contains the actual results and some metadata. This part of the data card is encrypted using AES-256 \cite{AES-standard} in GCM mode \cite{GCM}. There is then an 
 additional field, containing the AES key encrypted using ElGamal over Curve25519 \cite{elliptic-elgamal}. Using hybrid Cryptography enables PEP to use ElGamal's properties at a 
 performance cost close to the one of using AES-256-GCM. Using AES-256 instead of AES-128 or AES-192 is not for additional security, as other parts of PEP's design give 128 bits of
-security anyway. Rather, the reason is that a 256 bits key is similar in size to a point of the used curve, so this makes it straightforward to encode the AES key as a curve point
-without having to use any special encoding.\todo{Maybe I should add more details about this?}\par
+security anyway. Rather, the reason is that a 256 bits key has the same size as a point of the used curve, so this makes it straightforward to encode the AES key as a curve point
+without having to use any special encoding\footnote{PEP uses the Ristretto technique\cite{ristretto-website} to prevent small subgroup and invalid curve attacks. This approach
+encodes curve points to a 32-bytes string, thus it is straightforward to use the same encoding to map 256 bits (32 bytes) AES keys to curve points.}. \par
 If the data contained inside a data card needs to be updated, instead of deleting the card a new one is added "on top" of it, overlaying the old data. Subsequent queries will
-return the new data, unless a point in time is specified. In this case, the returned data is the data recorded in the data card that was on top of the deck at that specified
+return the latest data, unless a point in time is specified. In this case, the returned data is the data recorded in the data card that was on top of the deck at that specified
 time.
 
 \subsection{Pseudonyms}
-As part of the registration procedure, each participant get assigned a participant identifier. This identifier isn't used directly, but instead it serves as a basis to generate
+As part of the registration procedure, each participant gets assigned a participant identifier, also known as PEP ID. This identifier is not used directly, but instead it serves as a basis to generate
 local pseudonyms. These pseudonyms do not depend solely on the participant identifier, but also on the usage context: different studies involving the same participants or different
-researchers accessing the same dataset will get different local pseudonyms. These local pseudonyms are obtained by encrypting the participant's identifier using ElGamal, and then
-applying the re-shuffle operation \cite{pep-blueprint}. \par
-Sometimes it is necessary to generate an identifier to link the result of a specific test, e.g. a blood test, to a participant. To do this, PEP is able to generate short
+researchers accessing the same dataset will get different local pseudonyms. This is useful to prevent combining data across different datasets \footnote{It is still possible to
+link different local pseudonyms to the same participant by comparing bit-by-bit complicated pieces of data, like brain scans, that are unlikely to be the same for different people. To 
+mitigate this possibility, users have to sign an agreement that forbids them to do such comparison.}. These local pseudonyms are obtained by encrypting the participant's identifier 
+using ElGamal, and then applying the re-shuffle operation \cite{pep-blueprint}. \par
+Sometimes it is necessary to generate an identifier to link a participant to a data source outside PEP. This happens during the collection of samples, e.g. blood samples, to then
+perform some analysis in a laboratory. In these cases, researchers need an identifier to put on those samples to then be able to link the results to the correct participant, but
+without leaking the participant's identity to the laboratory performing the analysis. Furthermore, for practical reasons, these identifiers need to be short enough to fit on a printed label. To do this, PEP is able to generate short
 pseudonyms. These short pseudonyms aren't derived from the participant identifier, and are instead generated as a random number concatenated with a checksum to prevent
-transcription errors. These short pseudonyms are then recorded inside a specific column related to the specific exam they are used for \cite{pep-blueprint}.
+transcription errors. These short pseudonyms are then recorded inside a specific column related to the test they are used for, e.g. for a blood test the column storing the short
+pseudonyms printed on the blood vials could be called \todo{add example}  \cite{pep-blueprint}.
+
+\subsection{CRM}
+While technically not a part of PEP, using PEP also entails using a customer relationship management (CRM) software as part of logistic procedures involving study participants. In fact, 
+after reading the previous section, a question arises naturally: if a nurse or doctor is collecting some sort of samples from study participants to be then sent to a laboratory for 
+analysis, and has a set of printed labels with the short pseudonyms generated by PEP, how can he know which is the correct label to apply to each sample? \par
+To answer this question, we need to take a step back and briefly describe what happens when a participant is accepted for a study. Let's say that Alice is willing to take part to a
+medical study as a study participant. After an initial evaluation to check her eligibility for the study, she gets accepted. At this point, she gets registered for the study. As
+part of the registration procedure, PEP generates a PEP ID in the form of a unique pseudorandom number. This identifier is then stored inside the CRM alongside personally
+identifying information such as full name and date of birth. This is needed for two purposes: it enables the assessors\footnote{An assessor is a person collecting data from
+participants} to verify the identity of the participant during the visits and enables re-identification if this is required because of incidental findings. This answers our
+question: when Alice presents herself to a visit where samples are collected, the doctor checks in the CRM what is her PEP ID. Then, using the PEP ID, he can get from PEP the short
+pseudonym that was previously generated for the sample that he is going to collect, thus he is able to label it correctly. Only assessors need to be able to link the identity of
+study participants to their PEP ID. To keep researcher accessing that data later via PEP from knowing the participants' identities, they are not allowed access to the CRM, the
+PEP ID column inside PEP and the columns containing the short pseudonyms, as they don't need these information to perform their research anyway.\par
+Currently, the CRM used in combination with PEP is Salesforce \cite{salesforce-website}.
 
 \subsection{Data access} \label{data_access}
 This and the next section mention PEP users. These are in principle (and, before this thesis work gets implemented, also in  practice) different from study participants. A PEP user is
-someone that interacts with PEP, while a study participant is someone taking part in a study. \par
+someone that interacts with PEP, while a study participant is someone taking part in a medical study as a data contributor. \par
 To be able to interact with PEP's table, a user needs a ticket granting the correct permissions for the required operation. PEP implements a way to specify access rules for
 specific user groups, and then a specific user is assigned to a group. These rules are then used to determine whether to grant a ticket for a specific operation or not. This
-constitutes a form of role-based access control \cite{rbac}. To be able to bootstrap this permissions system, it is needed that someone has the right of writing rules for access
-groups, to specify access groups and to add users to groups. For this reason, PEP has two builtin access groups: "Data Administrator" and "Access Administrator" \cite{pep-blueprint}. A
-member of the former group is called a data administrator, and has the permissions needed to modify columns, column groups, and participant groups. A member of the latter group is
-called an access administrator, and has the right to modify the access rules used to issue tickets, modify and read the user list to issue authentication tokens, and manually issue
-authentication tokens. These two roles are given to distinct people, so that they would need to collude to access a specific piece of data. An Access Administrator could still
-give himself access to already existing groups. To dissuade the administrator from misbehaving, PEP logs rules creation and data access requests.
+constitutes a form of role-based access control \cite{rbac}. \par
+To be able to bootstrap this permissions system, it is needed that someone has the right of writing rules for access groups, to specify access groups and to add users to groups. For 
+this reason, PEP has two builtin access groups: "Data Administrator" and "Access Administrator" \cite{pep-blueprint}. A member of the former group is called a data administrator, and 
+has the permissions needed to modify columns, column groups, and participant groups. A member of the latter group is called an access administrator, and has the right to modify the 
+access rules used to issue tickets, modify and read the user list to issue authentication tokens, and manually issue authentication tokens. These two roles are given to distinct people, 
+so that they would need to collude to access a specific piece of data. \par
+Let's assume that the data administrator would like to access the results of a participant's blood test. First of 
+all, it is important to stress once again that PEP's table doesn't contain the names of participants. Study participants are only identified via their participant identifier, and the 
+pseudonyms that are derived from such identifier. These are random numbers that don't carry any information regarding a participant's identity. So the data administrator can't access 
+the data of a specific person he knows, but could still try to access the data corresponding to a specific pseudonym or PEP ID. Since the data administrator is able to create new user 
+groups, he could create a new group containing the participant he would like to spy on, but he can't give himself access to this newly created group. To accomplish this, he needs to 
+ask the access administrator. If the access administrator agrees, he can now access the participant's data. In the case the data administrator already has read access to a participant 
+group, he could read the data of the participants inside that group and add the participant he is interested in to such group. But this means that the access administrator gave him 
+read access to such participant group in the past, and there is no reason why a data administrator should have read access to participants' data. So the only case when this can happen 
+is if the access administrator is complicit in accessing participants' data. \par
+Let's now consider the case of the access administrator willing to access some specific participant's data. 
+He can't create a new participant group containing that participant, so he needs to ask the data administrator to do that for him. If the data administrator accepts and creates such 
+group, he can now give himself read access to that group's data, thus obtaining access to the participant's data. But an access administrator could still give himself access to already 
+existing groups, including one that already contains the participant he is interested in. To mitigate this problem, PEP employs an architectural solution: there are two separate
+servers that need to collaborate to issue a valid ticket granting access to a piece of data. The first is called "access manager", and the second is called "transcryptor". The access manager's role is to apply the rules defined by the access manager, while the transcryptor keeps an auditable log of the issued
+tickets.\ref{pep_servers} This should dissuade the access administrator from misbehaving, as the tickets he uses to access the data will be logged.
+
 
 \subsection{Authentication and authorization}
 PEP's servers are authenticated using TLS certificates. Clients instead authenticate themselves to the servers using PEP certificates \cite{pep-blueprint}. This is different from
@@ -162,12 +256,12 @@ As mentioned in section \ref{data_access}, PEP implements RBAC by having a "data
 second links users with these rights. The act of defining access permissions is equivalent to defining roles, and the act of linking these rights with users is equivalent to assigning
 roles to users. 
 
-\subsection{PEP servers}
+\subsection{PEP servers}\label{pep_servers}
 Here is a list of the main server components of PEP. The access manager mentioned here is a piece of software, and should not be confused with the access administrator role mentioned
 earlier, i.e. a person with the right to give users access to the datasets defined by the data administrator.
 \begin{itemize}
 		\item Storage facility: stores the table and the data cards.
-		\item Access manager and transcryptor: issue tickets and keep the access rules.
+		\item Access manager and transcryptor: issue tickets and keep the access rules. Additionally, the transcryptor keeps an auditable log of the issued tickets.
 		\item Key server: checks authentication tokens and signs users' PEP certificates.
 		\item Authentication server: keeps the users list and generates authentication tokens. 
 		\item Registration server: generates the participant identifiers and the short pseudonyms.
@@ -192,36 +286,40 @@ It starts with the user contacting PEP's key server and presenting its authentic
 At the beginning of this work, I considered many possible solutions, that either turned out to not respect PEP's privacy standard or were deemed risky by the PEP team. Other
 solutions, instead, while feasible in theory, failed in practice. This section briefly presents one of those of the latter category, as it would have made for a clean solution that
 nicely integrates with the rest of PEP's architecture. \par
-As PEP already uses the SAML standard \cite{sstc-saml-core-errata-2.0-wd-07} for authentication and the OAuth standard \cite{OAuth} for authorization, it would be natural to implement a 
-SAML authentication provider using IRMA \cite{irma-app}.
-This is how the registration and authentication flows would have looked like with this solution. 
-\begin{figure}[p]
-	\includesvg[angle=90, scale=0.25]{data_access_failed_attempt}
-	\centering
-\end{figure}
-
-To implement this, I tried setting up SimpleSAMLphp \cite{simplesamlphp} to work as an IRMA \cite{about-irma} identity provider. SimpleSAMLphp can work both as a service provider and
+As PEP already uses the SAML standard \cite{sstc-saml-core-errata-2.0-wd-07} for authentication, it would be natural to implement a SAML identity provider using YIVI \cite{irma-app}.
+Due to formatting constraints, the relative registration flow is available here \cite{registration-flow-bpmn-diagram}, and the data access flow is available here
+\cite{data-access-failed-attempt-bpmn-diagram}
+To implement this, I tried setting up SimpleSAMLphp \cite{simplesamlphp} to work as an YIVI \cite{about-irma} identity provider. SimpleSAMLphp can work both as a service provider and
 as an identity provider, and can be extended by writing PHP plugins. There were already two previous attempts about writing such a plugin: 
 "simplesamlphp-module-authirma" \cite{simplesamlphp-module-authirma} by the Privacy by Design Foundation \cite{privacybydesignfoundation} and "irma-idp" \cite{irma-idp} by SURF \cite{surf}.
-Both appear to be unmaintained, but I attempted to use those as a basis for my own implementation. \par
-I started by setting up a local IRMA server inside a Docker container and creating a demo credential for PEP study participants, called "demo.PEP.id" \todo{check credential name}. I
-then tried making "simplesamlphp-module-authirma" work again. It was developed at a time where the IRMA HTTP server and the IRMA JSON API server where two separate components. While
+Both appear to be unmaintained, but I first attempted to use those as a basis for my own implementation. \par
+I started by setting up a local YIVI server inside a Docker container and creating a demo credential \cite{irma-docs-issuer} for PEP study participants, called "demo.PEP.id" \todo{check credential name}. I
+then tried making "simplesamlphp-module-authirma" work again. It was developed at a time where the YIVI HTTP server and the YIVI JSON API server where two separate components. While
 trying to make it work again, I stumbled upon the problem of getting the keys for the API and web servers. Probably the key is the same for both, as now the irmago
 server \cite{irma-docs-server} implements both, but I was not able to find the certificate in the required format inside my Docker container. \par
 After failing to make "simplesamlphp-module-authirma" work again, I did some more research on previous work and found out about "irma-idp". It is more recent and, while it still
 appears to be unmaintained, at least uses the current architecture where irmago provides both the HTTP server and JSON API server components \cite{irma-docs-server}. But this
 project lacks configuration instructions and, again, I was not able to find the required certificate by trying the method reported in the repository's README \cite{irma-idp}. I asked for 
 clarification in a GitHub issue, but to date I got no answer \cite{irma-idp-issue}. Additionally, looking at the code inside the repository it looked to either be incomplete or
-contain an error: the HTML code inside the "disclose.html" file contains a "Verify attribute" that does not do anything, and there is no way to trigger the redirect specified
+contain an error: the HTML code inside the "disclose.html" file contains a "Verify attribute" button that does not do anything, and there is no way to trigger the redirect specified
 inside the form. Likely the idea was to redirect the user upon clicking the aforementioned button, but in this case the code should have been written differently. \par
-Since "simplesamlphp-module-authirma" is unmaintained and targeted an old IRMA server implementation, and "irma-idp" appears to be abandoned in a non-working state and with lacking
+Since "simplesamlphp-module-authirma" is unmaintained and targeted an old YIVI server implementation, and "irma-idp" appears to be abandoned in a non-working state and with lacking
 documentation, I decided to write my own SimpleSAMLphp plugin instead of adapting old projects to work with the new irmago implementation. This is because attempting to fix these
 old implementations could have entailed a significant rewrite of their code, so I decided to start afresh. I installed and configured SimpleSAMLphp \cite{simplesamlphp-docs} as a SAML identity
-provider \cite{sstc-saml-core-errata-2.0-wd-07} inside a Docker container, then I followed its documentation to write an authentication source talking with an IRMA server. 
+provider \cite{sstc-saml-core-errata-2.0-wd-07} inside a Docker container, then I followed its documentation to write an authentication source talking with an YIVI server.
+SimpleSAMLphp lets a developer write its own authentication flow. After authentication is completed, one has to pass to SimpleSAMLphp the relative attribute and it will take care
+of generating a SAML assertion and send it to the user. Internally, it iompkements a state machine going through the different authentication steps. If a redirect is necessary
+during the authentication flow, it is necessary to save the authentication state and then  restore it after the redirect. Since I had to show the user a custom page containing a QR
+code to disclose its own YIVI credentials, I needed to save the state and perform a redirect. I could confirm the state was saved on a temporary file, but attempting to restore it
+failed. It was likely a configuration error, but asking SimpleSAMLphp's developers for help didn't turn anything. After trying to fix this issue for some time I abandoned this
+path. \todo{talk about registartion component}
+
+\subsection{Web application}
+Everybody wants web apps! So let's give them what they want. After failing with SimpleSAMLphp, I 
 
 \iffalse
 \subsection{Some initial ideas}
-The first idea to let users download their data from PEP was to use IRMA to disclose the data needed to generate the pseudonym to some component that then proceeds to generate it.
+The first idea to let users download their data from PEP was to use YIVI to disclose the data needed to generate the pseudonym to some component that then proceeds to generate it.
 This doesn't work because the pseudonym is generated by encrypting a random string. But this string gets stored inside Salesforce, so the next idea was to interface with
 Salesforce. This could have posed some issues though:
 \begin{enumerate}
@@ -231,14 +329,14 @@ Salesforce. This could have posed some issues though:
 Let's analyze these issues. If the seed is stored alongside personal data, then getting it from Salesforce could expose personal identifiable information. How? One could argue that
 they shouldn't store anything inside Salesforce anyway... But it is done to be able to de-anonymize users in special circumstances. And here we get to the point: better not touch
 Salesforce, unless those special circumstances arise. The second issue is about API access. Salesforce does have it, but only for certain editions \cite{salesforce}. The PEP team
-blackballed the idea of accessing Salesforce. The next proposal was to give participants their own ID (main pseudonym) during the enrollment procedure as an IRMA credential, but
+blackballed the idea of accessing Salesforce. The next proposal was to give participants their own ID (main pseudonym) during the enrollment procedure as an YIVI credential, but
 providing them with this ID could disclose more information than necessary.
 Since this first idea was discarded, I considered the following approaches:
 \begin{enumerate}
 		\item Give participants their own ID during enrollment phase.
 		\item Give participants a re-shuffled ID.
 		\item Create a fake study in which the participant has the researcher role.
-		\item Use IRMA’s chained session: it is possible to derive a card from other cards the user already has by having the user disclose he attributes contained there. The server can then apply some function on the attributes and derive a new card from that.
+		\item Use YIVI’s chained session: it is possible to derive a card from other cards the user already has by having the user disclose he attributes contained there. The server can then apply some function on the attributes and derive a new card from that.
 \end{enumerate}
 
 The first approach could pose unnecessary risks. The participant's pseudonym is used to obtain the re-shuffled pseudnyms that identify the participant in different studies and in
@@ -250,7 +348,7 @@ In a similar fashion to the previous approach, it would be possible to create a 
 the researcher role inside their own fake study to be able to access their own data. Also this option would require to provide them with some key material, opening the door to keym
 management issues [again, is this actually needed? See also previous note]. \par
 The last approach is a way to sidestep the issue of providing study participants with their own pseudonym or a re-shuffled pseudonym. But it would require some way of linking the
-IRMA identity to the participant.\par
+YIVI identity to the participant.\par
 
 \subsection{The chosen solution}
 PEP uses rbac, let's use that too! First, create a column group containing all the columns pertaining to exam results. Then, for each participant, create a new participant group
