@@ -20,11 +20,75 @@
 
 \newtheorem{property}{Property}
 
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% SET TITLE PAGE VALUES HERE %%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%             ||               %
+%             ||               %
+%             \/               %
+
+\def\thesistitle{Designing and implementing a participant login solution for PEP using YIVI}
+%\def\thesissubtitle{Why I Definitely Deserve a Fields Medal}
+\def\thesisauthorfirst{Giacomo Tommaso}
+\def\thesisauthorsecond{Petrucci}
+\def\thesissupervisorfirst{prof. Bart}
+\def\thesissupervisorsecond{Jacobs}
+\def\thesissecondreaderfirst{prof. Erik}
+\def\thesissecondreadersecond{Poll}
+\def\thesisdate{February 2024}
+
+
+%             /\               %
+%             ||               %
+%             ||               %
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% SET TITLE PAGE VALUES HERE %%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+%% FOR PDF METADATA
+\title{\thesistitle}
+\author{\thesisauthorfirst\space\thesisauthorsecond}
+\date{\thesisdate}
+
+
+
 \begin{document}
 
-\title{Designing and implementing a participant login solution for PEP using YIVI}
-\author{Giacomo Tommaso Petrucci}
-\maketitle
+\begin{titlepage}
+	\thispagestyle{empty}
+	\newcommand{\HRule}{\rule{\linewidth}{0.5mm}}
+	\center
+	\textsc{\Large Radboud University Nijmegen}\\[.7cm]
+	\includegraphics[width=25mm]{in_dei_nomine_feliciter.eps}\\[.5cm]
+	\textsc{Faculty of Science}\\[0.5cm]
+	
+	\HRule \\[0.4cm]
+	{ \huge \bfseries \thesistitle}\\[0.1cm]
+	\textsc{\thesissubtitle}\\
+	\HRule \\[.5cm]
+	\textsc{\large Thesis MSc Cyber Security}\\[.5cm]
+	
+	\begin{minipage}{0.4\textwidth}
+	\begin{flushleft} \large
+	\emph{Author:}\\
+	\thesisauthorfirst\space \textsc{\thesisauthorsecond}
+	\end{flushleft}
+	\end{minipage}
+	~
+	\begin{minipage}{0.4\textwidth}
+	\begin{flushright} \large
+	\emph{Supervisor:} \\
+	\thesissupervisorfirst\space \textsc{\thesissupervisorsecond} \\[1em]
+	\emph{Second reader:} \\
+	\thesissecondreaderfirst\space \textsc{\thesissecondreadersecond}
+	\end{flushright}
+	\end{minipage}\\[4cm]
+	\vfill
+	{\large \thesisdate}\\
+	\clearpage
+\end{titlepage}
 
 \begin{abstract}
 	Polymorphic Encryption and Pseudonimisation (PEP) is both a technology and a project developed at iHub to let researcher collect medical data of people taking part in studies, 
