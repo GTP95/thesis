@@ -66,7 +66,7 @@
 	
 	\HRule \\[0.4cm]
 	{ \huge \bfseries \thesistitle}\\[0.1cm]
-	\textsc{\thesissubtitle}\\
+	%\textsc{\thesissubtitle}\\
 	\HRule \\[.5cm]
 	\textsc{\large Thesis MSc Cyber Security}\\[.5cm]
 	
@@ -237,7 +237,7 @@ perform some analysis in a laboratory. In these cases, researchers need an ident
 without leaking the participant's identity to the laboratory performing the analysis. Furthermore, for practical reasons, these identifiers need to be short enough to fit on a printed label. To do this, PEP is able to generate short
 pseudonyms. These short pseudonyms aren't derived from the participant identifier, and are instead generated as a random number concatenated with a checksum to prevent
 transcription errors. These short pseudonyms are then recorded inside a specific column related to the test they are used for, e.g. for a blood test the column storing the short
-pseudonyms printed on the blood vials could be called \todo{add example}  \cite{pep-blueprint}.
+pseudonyms printed on the blood vials could be called ShortPseudonym.Visit1.Blood  \cite{pep-blueprint}.
 
 
 \subsection{CRM}
@@ -382,8 +382,16 @@ At the beginning of this work, I considered many possible solutions, that either
 solutions, instead, while feasible in theory, failed in practice. This section briefly presents one of those of the latter category, as it would have made for a clean solution that
 nicely integrates with the rest of PEP's architecture. \par
 As PEP already uses the SAML standard \cite{sstc-saml-core-errata-2.0-wd-07} for authentication, it would be natural to implement a SAML identity provider using YIVI \cite{irma-app}.
-Due to formatting constraints, the relative registration flow is available here \cite{registration-flow-bpmn-diagram}, and the data access flow is available here
-\cite{data-access-failed-attempt-bpmn-diagram}
+Here is a BPMN diagram of the process that would be required to register a new study participant.
+
+\begin{figure}[H]
+	\includegraphics[scale=0.3]{registration_flow.png}
+	\caption{Failed attempt registration flow as a BPMN diagram}
+	\label{bpmn-registration-flow}
+\end{figure}
+
+Due to formatting constraints, the relative data access flow is available here \cite{data-access-failed-attempt-bpmn-diagram}.
+
 To implement this, I tried setting up SimpleSAMLphp \cite{simplesamlphp} to work as an YIVI \cite{about-irma} identity provider. SimpleSAMLphp can work both as a service provider and
 as an identity provider, and can be extended by writing PHP plugins. There were already two previous attempts about writing such a plugin: 
 "simplesamlphp-module-authirma" \cite{simplesamlphp-module-authirma} by the Privacy by Design Foundation \cite{privacybydesignfoundation} and "irma-idp" \cite{irma-idp} by SURF \cite{surf}.
@@ -394,8 +402,8 @@ trying to make it work again, I stumbled upon the problem of getting the keys fo
 server \cite{irma-docs-server} implements both, but I was not able to find the certificate in the required format inside my Docker container. \par
 After failing to make "simplesamlphp-module-authirma" work again, I did some more research on previous work and found out about "irma-idp". It is more recent and, while it still
 appears to be unmaintained, at least uses the current architecture where irmago provides both the HTTP server and JSON API server components \cite{irma-docs-server}. But this
-project lacks configuration instructions and, again, I was not able to find the required certificate by trying the method reported in the repository's README \cite{irma-idp}. I asked for 
-clarification in a GitHub issue, but to date I got no answer \cite{irma-idp-issue}. Additionally, looking at the code inside the repository it looked to either be incomplete or
+project lacks configuration instructions and, again, I was not able to find the required certificate by trying the method reported in the repository's README \cite{irma-idp}. I asked 
+for clarification in a GitHub issue, but to date I got no answer \cite{irma-idp-issue}. Additionally, looking at the code inside the repository it looked to either be incomplete or
 contain an error: the HTML code inside the "disclose.html" file contains a "Verify attribute" button that does not do anything, and there is no way to trigger the redirect specified
 inside the form. Likely the idea was to redirect the user upon clicking the aforementioned button, but in this case the code should have been written differently. \par
 Since "simplesamlphp-module-authirma" is unmaintained and targeted an old YIVI server implementation, and "irma-idp" appears to be abandoned in a non-working state and with lacking
@@ -409,10 +417,12 @@ code to disclose its own YIVI credentials, I needed to save the state and perfor
 failed. It was likely a configuration error, but asking SimpleSAMLphp's developers for help didn't turn anything. After trying to fix this issue for some time I abandoned this
 path. \todo{talk about registration component}
 
+\iffalse
+
 \subsection{Web application}
 Everybody wants web apps! So let's give them what they want. After failing with SimpleSAMLphp, I 
 
-\iffalse
+
 \subsection{Some initial ideas}
 The first idea to let users download their data from PEP was to use YIVI to disclose the data needed to generate the pseudonym to some component that then proceeds to generate it.
 This doesn't work because the pseudonym is generated by encrypting a random string. But this string gets stored inside Salesforce, so the next idea was to interface with
