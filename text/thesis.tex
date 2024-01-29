@@ -380,7 +380,10 @@ obtaining its own key.
 \subsection{Failed attempt}
 At the beginning of this work, I considered many possible solutions, that either turned out to not respect PEP's privacy standard or were deemed risky by the PEP team. Other
 solutions, instead, while feasible in theory, failed in practice. This section briefly presents one of those of the latter category, as it would have made for a clean solution that
-nicely integrates with the rest of PEP's architecture. \par
+nicely integrates with the rest of PEP's architecture. Even though this attempt at a solution did not work out, some elements of it were used as part of the working solution
+presented later.\par
+
+\subsubsection{Design choices}
 As PEP already uses the SAML standard \cite{sstc-saml-core-errata-2.0-wd-07} for authentication, it would be natural to implement a SAML identity provider using YIVI \cite{irma-app}.
 Here is a BPMN diagram of the process that would be required to register a new study participant.
 
@@ -391,6 +394,60 @@ Here is a BPMN diagram of the process that would be required to register a new s
 \end{figure}
 
 Due to formatting constraints, the relative data access flow is available here \cite{data-access-failed-attempt-bpmn-diagram}.
+
+This solution requires to generate a credential that lets a study participant authenticate to PEP, but without leaking the participant's identity. To be in line with PEP's own
+design choices, I decided to use the string "participant:" followed by a random string as an identifier that gets linked to the participant during the registration phase. Such string is 
+a version 4 UUID as described in RFC 4122 \cite{uuid_rfc}.  
+
+\subsubsection{Version 4 UUID}
+A version 4 UUID is a 128 bits-long value, usually represented as a string of hyphen-separated hexadecimal values. 6 bits are set to predetermined values, this leaves 122 bits of
+randomness. "Do not assume that UUIDs are hard to guess; they should not be used
+   as security capabilities (identifiers whose mere possession grants
+   access), for example.  A predictable random number source will
+   exacerbate the situation."
+
+   do note that mere knowledge of the UUID doesn't grant access: one needs an YIVI card, so the attribute needs to be validated.
+
+   \subsubsection{Estimating collision probability: the birthday paradox}\todo{Re-read everything and rewrite better e.g. by putting p=, pbar= etc}
+To analyze the probability of two version 4 UUIDs colliding, we use the birthday paradox. 
+What is the probability that two or more people share the same birthday in a group of $n$ people? 
+To answer this question, it is easier to first compute the probability that no one has the same birthday, and then compute the complement probability. We start by ordering all the
+people in the group, and then for each of them we ask what is the probability that that person doesn't share its birthday with any of the previous ones. For the first person, the
+probability is 1, since we are not considering any other person yet. Then, the probability of the second person not sharing their birthdy with the previous one is the probability
+that this person is born in any day of the year other than the day the first person was born in: $1-\frac{1}{365}$. For the third person, the probability of not sharing the
+birthday with any of the previous two is the probability of being born in any day other than the two days already taken by the first two: $1-\frac{2}{365}$. This pattern stays
+valid for any number $n$ of people\footnote{Some explanations of the problem define a special case for $n>365$. Although one can save computations by noting that if you have more
+people than days in a year then you must have a collision, the general formula still works since one of the factors becomes zero.}, so the probability that in a group of $n$ people no-one shares its birthday with
+another person of the same group is $1(1 - \frac{1}{365} ) \dotso  (1 - \frac{n - 1}{365} ) = \prod_{k=1}^{n-1}(1-\frac{k}{365})$. From this follows that the probability of having at least
+to people that share their birthday in a group of $n$ people is
+
+$$1-\prod_{k=1}^{n-1}(1-\frac{k}{365})$$
+
+This result can be generalized to obtain a formula we can use for the case of version 4 UUID collisions. Instead of considering birthdays, let's consider the case of a group of $n$
+people randomly choosing an object from a set of $u$ objects, with replacement. Here $u$ is the set of all possible version 4 UUIDs. Following the same reasoning as before, we obtain
+$1(1-\frac{1}{u}) \dotso (1-\frac{n-1}{u}) = \prod_{k=1}^{n-1}(1-\frac{k}{u})$. So the probability of having at least two version 4 UUIDs colliding is
+
+$$1- \prod_{k=1}^{n-1}(1-\frac{k}{u})$$
+
+Computing the exact value for large values of $n$ and $u$ is prohibitive. For this reason, it is often used an approximation of the above formula. To derive it, we have to look at the
+problem from a slightly different perspective. To see if there are collisions, we can look at all possible UUID pairs, and ask for each pair if the two UUIDs are the same or not.
+Each comparison is a Bernoulli trial, so when we consider a sequence of such comparisons we obtain a binomial distribution. The probability of each pair not being a collision is
+$\frac{1-u}{u}$. Since each Bernoulli trial is independent from the others, to get the probability of not having collisions in the set of all possible pairs, we can raise the
+previous result to a power representing the cardinality of the set of all possible pairs: $(\frac{1-u}{u})^{\binom{n}{2}}$. From this, it follows that the probability of having at
+least a collision is 
+
+$$1-(\frac{1-u}{u})^{\binom{n}{2}}$$.
+
+While rewriting the result in this form does not help computing it per se, we can now use the fact that this is a binomial distribution to apply a Poisson approximation. If we have
+$n \geq 20$ and $p \leq 0.05$ or $n \geq 100$ and $p \leq 0.1$ a Poisson distribution of parameter $\lambda=np$ is a good approximation. Under this assumption, we can say that the
+probability of not having collisions is $e^\lambda$ and the probability of having at least one collision is
+
+$$1-e^\lambda$$
+
+where $\lambda=np$.
+
+Verion 4 UUIDs are 128 bits long, of which 122 are randomly generated. Assuming a uniformly random number generator is used, this gives us $u=2^122$ possible UUIDs. So we have $p=$
+
 
 To implement this, I tried setting up SimpleSAMLphp \cite{simplesamlphp} to work as an YIVI \cite{about-irma} identity provider. SimpleSAMLphp can work both as a service provider and
 as an identity provider, and can be extended by writing PHP plugins. There were already two previous attempts about writing such a plugin: 
