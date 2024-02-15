@@ -113,22 +113,27 @@ database, as it uses polymorphic encryption to protect the privacy and identity 
 To store data in encrypted form, PEP uses the ElGamal cipher. Thanks to ElGamal's re-key operation, it is possible to store the data by an untrusted party even before knowing who
 will need to get access to the data. Then the data can be subsequently re-keyed to grant access to the intended person or entity, without exposing the plaintext to the storage provider.
 An entity might need a global identifier for the people whose data is stored inside PEP, or to store an already existing identifier but without accessing the original identifier. To
-solve this problem, PEP uses ElGamal's re-shuffle operation, that lets derive many identifiers from a "base identifier" without disclosing that base identifier \cite{peppaper}.\par
+solve this problem, PEP uses ElGamal's re-shuffle operation, that lets derive many identifiers from a \enquote*{base identifier} without disclosing that base identifier \cite{peppaper}.\par
 To enable reproducibility of historical queries, PEP has the concept of data cards. Each piece of data is stored inside a data card which is in turn stored in one of the table's
 cells. If the data contained inside a cell needs to be updated, instead of deleting the already existing card, a new data card is generated and stored \enquote*{on top} of the previous data
 card. Thus, each cell contains a deck of cards, and it is possible to see which data a query would have returned in a specific past point in time. \par
 PEP's current focus is healthcare, but its general architecture can be used for different purposes. NOLAI \cite{nolai} \cite{pepproject} recently announced that it will use PEP to
 collect their research data in the education field. \par
 A side effect of PEP's privacy focus is that it didn't ship with a way for study participants, or people whose data is stored inside PEP in general, to get access to their own
-data. This constitutes a problem, as article 15 of the GDPR states that "The data subject shall have the right to obtain from the controller confirmation as to whether or not
-personal data concerning him or her are being processed, and, where that is the case, access to the personal data [...]" \cite{gdpr-art-15}. 
+data. This constitutes a problem, as article 15 of the GDPR states that \enquote*{The data subject shall have the right to obtain from the controller confirmation as to whether or not
+personal data concerning him or her are being processed, and, where that is the case, access to the personal data [...]} \cite{gdpr-art-15}. 
 This work is aimed at finding and developing a solution to this issue.
 
 \section{An introduction to PEP's internals} \todo{Implement feedback about user groups}
+This section gives an overview of the inner workings of PEP. To discuss PEP's internals, we will consider three category of users: administrators, researchers and participants.
+Administrators are in charge of managing PEP and of configuring it properly, researchers are scientists accessing the data stored inside PEP as part of some
+scientific investigation and participants are people taking part in medical studies as data contributors. When something applies to both administrators and researchers, we will adopt the generic term
+\enquote*{user}. The reason for not considering participants as users is that, before this thesis' work gets implemented, study participants are not PEP users since they can't
+interact with PEP. \par
 PEP's design principles are data and trust minimization. Organizational data minimization consists in giving access to a party only to the data that specific party needs, in order to make
 participant identification difficult. Technical trust minimization consists in dividing PEP's architecture into multiple separate components operated by different parties. The goal is to
-prevent a single party from having access to the data: if multiple components need to cooperate to access the data, one doesn't have to trust that each single party will
-behave properly. Where this split is not possible, a special component called "transcyptor" keeps an auditable log of the operations performed. This is used to dissuade a party
+prevent a single party from having access to the data: if multiple components need to cooperate to access the data, and are managed by distinct parties, one doesn't have to trust that each single party will
+behave properly. Where this split is not possible, a special component called \enquote*{transcyptor} keeps an auditable log of the operations performed. This is used to dissuade a party
 from misbehaving, as their malicious behavior will be recorded \cite{pep-blueprint}. \par
 At the heart of PEP's design, are ElGamal's re-randomize, re-key and re-shuffle operations. To this cryptographic foundation, other elements are added to get a complete functional system. In
 particular, PEP uses a form of role-based access control (RBAC) \cite{rbac} to manage users' privileges. It also employs hybrid cryptography for performance reasons and a
@@ -152,7 +157,7 @@ She then sends the pair $(A, C)$ to Bob. \newline
 \par
 Bob decrypts the message by computing $M=C-[b]A$ and then decoding $M$ to $m$. This works because, by substituting back the definition for each term of the computation, we obtain
 		$$C-[b]A=M+[a]B-[b][a]G=M+[a][b]G-[b][a]G=M$$ 
-		The last step follows from the commutative property \todo{ask, Jacobs says associative}of point addition over an elliptic curve and the existence of the additive inverse.
+		The last step follows from the distributive property of point addition over an elliptic curve and the commutative property of integer multiplication.
 
 \begin{property}[Homomorphic property]
 ElGamal over elliptic curves is homomorphic with regards to addition: given an encoded message $M \in E(\mathds{F}_p)$ and a point $p \in E(\mathds{F}_p)$, computing $R=M+p$ and
@@ -173,7 +178,7 @@ $$C_2=M+[a]B$$
 $$C_2^{'}=C_2+p=M+[a]B+p$$
 The obtained ciphertext is the pair $(A, C_2^{'})$.
 \newline \newline
-Due to the commutativity\todo{check} of point addition on an elliptic curve, $C_1=C_2^{'}$, thus $(A, C_1)=(A, C_2^{'})$.
+Due to the commutativity of point addition on an elliptic curve, $C_1=C_2^{'}$, thus $(A, C_1)=(A, C_2^{'})$.
 \end{proof}
 \end{property}
 
@@ -237,7 +242,7 @@ As part of the registration procedure, each participant gets assigned a particip
 basis to generate local pseudonyms. These pseudonyms are called local because they do not depend solely on the participant identifier, but also on the usage context: different studies 
 involving the same participants or different researchers accessing the same dataset will get different local pseudonyms. So they have a menaning only in the \enquote*{local} context 
 where they are used. This is useful to prevent combining data across different datasets \footnote{It is still possible to link different local pseudonyms to the same participant by 
-comparing bit-by-bit complicated pieces of data, like brain scans, that are unlikely to be the same for different people. To  mitigate this possibility, users have to sign an agreement 
+comparing bit-by-bit complicated pieces of data, like brain scans, that are unlikely to be the same for different people. To mitigate this possibility, users have to sign an agreement 
 that forbids them to do such comparison.}. These local pseudonyms are obtained by encrypting the participant's identifier using ElGamal, and then applying the re-shuffle operation
 \cite{pep-blueprint}. Each context will get a different, re-shuffled version of the pseudonym.\par
 Sometimes it is necessary to generate an identifier to link a participant to a data source outside PEP. This happens during the collection of samples, e.g. blood samples, to then
@@ -260,14 +265,14 @@ participants} to verify the identity of the participant during the visits and en
 question: when Alice presents herself to a visit where samples are collected, the doctor checks in the CRM what is her PEP ID. Then, using the PEP ID, he can get from PEP the short
 pseudonym that was previously generated for the sample that he is going to collect, thus he is able to label it correctly. Only assessors need to be able to link the identity of
 study participants to their PEP ID. To keep researchers accessing that data later via PEP from knowing the participants' identities, they are not allowed access to the CRM, the
-PEP ID column inside PEP and the columns containing the short pseudonyms, as they don't need these information to perform their research anyway. Additionally, there is no direct
+PEP ID column inside PEP and the columns containing the short pseudonyms, as they don't need this information to perform their research anyway. Additionally, there is no direct
 connection between PEP and the CRM, to prevent unwanted data flows between them that could put participants' privacy at risk.\par
 Currently, the CRM used in combination with PEP is one developed by Salesforce \cite{salesforce-website}.
 
 
 \subsection{PEP servers}\label{pep_servers}
 Here is a list of the main server components of PEP. The access manager mentioned here is a piece of software, and should not be confused with the access administrator role mentioned
-later, i.e. a person with the right to give users access to the datasets defined by the data administrator.
+later, i.e. a person with the right to give researchers access to the datasets defined by the data administrator. We briefly list the main components of PEP alongside their tasks:
 \begin{itemize}
 		\item Storage facility: stores the table and the data cards.
 		\item Access manager and transcryptor: issue tickets and keep the access rules. Additionally, the transcryptor keeps an auditable log of the issued tickets.
@@ -278,21 +283,22 @@ later, i.e. a person with the right to give users access to the datasets defined
 
 
 \subsection{Data access} \label{data_access}
-This and the next section mention PEP users. These are in principle (and, before this thesis work gets implemented, also in  practice) different from study participants. A PEP user is
-someone that interacts with PEP, while a study participant is someone taking part in a medical study as a data contributor.\todo{explain earlier} \par
+%This and the next section mention PEP users. These are in principle (and, before this thesis work gets implemented, also in practice) different from study participants. A PEP user is
+%someone that interacts with PEP, while a study participant is someone taking part in a medical study as a data contributor.\todo{explain earlier} \par
 To be able to interact with PEP's table, a user needs a ticket granting the correct permissions for the required operation. PEP implements a way to specify access rules for
 specific user groups, and then a specific user is assigned to a group. These rules are then used to determine whether to grant a ticket for a specific operation or not. This
 constitutes a form of role-based access control \cite{rbac}. \par
-To be able to bootstrap this permissions system, it is needed that someone has the right of writing rules for access groups, to specify access groups and to add users to groups. For 
+To be able to bootstrap this permissions system, it is needed that someone has the right to write rules for access groups, to specify access groups and to add users to groups. For 
 this reason, PEP has two builtin access groups: \enquote*{Data Administrator} and \enquote*{Access Administrator} \cite{pep-blueprint}. A member of the former group is called a data administrator, and 
-has the permissions needed to modify columns, column groups, and participant groups. A member of the latter group is called an access administrator, and has the right to modify the 
+has the permissions needed to modify columns, column groups, and participant groups\footnote{These are also called row groups, as each participant is represented by a row inside
+PEP's table.}. A member of the latter group is called an access administrator, and has the right to modify the 
 access rules used to issue tickets, modify and read the user list to issue authentication tokens, and manually issue authentication tokens. These two roles are given to distinct people, 
 so that they would need to collude to access a specific piece of data. \par
 Let's assume that the data administrator would like to access the results of a participant's blood test. First of 
 all, it is important to stress once again that PEP's table doesn't contain the names of participants. Study participants are only identified via their participant identifier, and the 
 pseudonyms that are derived from such identifier. These are random numbers that don't carry any information regarding a participant's identity. So the data administrator can't access 
-the data of a specific person he knows, but could still try to access the data corresponding to a specific pseudonym or PEP ID. Since the data administrator is able to create new user 
-groups, he could create a new group containing the participant he would like to spy on, but he can't give himself access to this newly created group. To accomplish this, he needs to 
+the data of a specific person he knows, but could still try to access the data corresponding to a specific pseudonym or PEP ID. Since the data administrator is able to create new
+participant groups, he could create a new group containing the participant he would like to spy on, but he can't give himself access to this newly created group. To accomplish this, he needs to 
 ask the access administrator. If the access administrator agrees, he can now access the participant's data. In the case the data administrator already has read access to a participant 
 group, he could read the data of the participants inside that group and add the participant he is interested in to such group. But this means that the access administrator gave him 
 read access to such participant group in the past, and there is no reason why a data administrator should have read access to participants' data. So the only case when this can happen 
@@ -323,15 +329,15 @@ looking up a user list to determine the user's membership of any access group.
 \subsubsection{SAML}
 Security Assertion Markup Language (SAML) is a security standard used to authenticate users and supporting Single Sign On (SSO) \cite{sstc-saml-core-errata-2.0-wd-07}. It defines
 the syntax and semantics for XML-encoded assertions regarding authentication, attributes, and authorization of a subject (an entity that is usually a user, but could in principle
-be a software component, a device or an entire organization) to other entities. It also defines protocols to exchange these information. SAML supports a number of usage scenarios, those 
-relevant for PEP's infrastructure are called "Identity Federation" and "SP-Initiated SSO". \par
-The SAML specification calls "Identity Federation" the scenario where two independent parties form an agreement about how to refer to a specific user that interacts with both
+be a software component, a device or an entire organization) to other entities. It also defines protocols to exchange this information. SAML supports a number of usage scenarios, those 
+relevant for PEP's infrastructure are called \enquote*{Identity Federation} and \enquote*{SP-Initiated SSO}. \par
+The SAML specification calls \enquote*{Identity Federation} the scenario where two independent parties form an agreement about how to refer to a specific user that interacts with both
 parties. Only one of the two parties needs to be able to authenticate the user, and the other party will trust a SAML assertion generated by the first party about the user's identity. \par
-"SP-initiated SSO" stands for "Service Provider initiated Single Sign On" and is the procedure through which a service provider asks an identity provider to authenticate a user on
+\enquote*{SP-initiated SSO} stands for \enquote*{Service Provider initiated Single Sign On} and is the procedure through which a service provider asks an identity provider to authenticate a user on
 its behalf. The identity provider will follow some procedure to perform the user authentication and, if the authentication is successful, will generate a SAML assertion containing
 the user's federated identity. For this scenario to work, the service provider and the identity provider need to have established a federated identity for the user in the past.\par
-As anticipated at the beginning of this section, PEP uses this two scenarios to authenticate (programs used by) users via an HTTP endpoint. The (program used by the) user first contacts 
-the HTTP endpoint to request an authentication token. It is then redirected to SURFconext's identity provider and presented a login page. The user attempts to login and, if the login is 
+As anticipated at the beginning of this section, PEP uses these two scenarios to authenticate (programs used by) users via an HTTP endpoint. The (program used by the) user first contacts 
+the HTTP endpoint to request an authentication token. It is then redirected to SURFconext's identity provider and presented a login page. The user attempts to log in and, if the login is 
 successful, the identity provider generates a SAML assertion containing the user's federated identity. The user forwards this assertion to PEP's authentication server that proceeds to 
 check this assertion and, if valid, generates the corresponding authentication token that is then sent to the user. This token is used during further interaction with other PEP 
 components. See image \ref{bpmn-authentication-flow} for a BPMN diagram representing PEP's authentication flow.
@@ -349,10 +355,10 @@ the other.}. RBAC is often used in the commercial sector as the situation there 
 typically don't own it, so they should not be able to decide on their own to give access to that document to other employees. On the other hand, a company doesn't have a strict
 hierarchy, and a person's level of access to resources depends more on this person's role inside the company rather than this person's place inside the company's hierarchy. This is
 also the case of PEP: researchers working inside different projects are at the same hierarchical level, but must be given access only to the data pertaining to their own research. In
-other words, the data pertaining tom some research is not more or less secret than the data pertaining to another research, but it can happen that researchers with the rights to access
+other words, the data pertaining to some research is not more or less secret than the data pertaining to another research, but it can happen that researchers with the rights to access
 the data of some study should not be allowed to access the same kind of data but pertaining to a different study. At the same time, a researcher should not be allowed to transfer his
 own access level to another user. \par
-As mentioned in section \ref{data_access}, PEP implements RBAC by having a "data administrator" and an "access administrator". The first defines a set of access permissions and the
+As mentioned in section \ref{data_access}, PEP implements RBAC by having a \enquote*{data administrator} and an \enquote*{access administrator}. The first defines a set of access permissions and the
 second links users with these rights. The act of defining access permissions is equivalent to defining roles, and the act of linking these rights with users is equivalent to assigning
 roles to users. 
 
@@ -386,6 +392,9 @@ entities), so none of the two has knowledge of the user's private key. The user 
 	\label{bpmn-enrollment-flow}
 \end{figure}
 
+\subsection{pepcli}\label{pepcli}\todo{mention the commands relevant for my solution and explain what they do}
+\textit{pepcli} is a command line client used to interact with PEP. It implements data access as well as all the functionalities needed for administration tasks, like adding
+columns or rows to the PEP table and managing permissions. Therefore, it implements all the protocols needed to support the procedures outlined in section \ref{data_access} \enquote*{Data access}.
 
 \chapter{Challenges and possible solutions}
 \section{The issue at play}
@@ -397,18 +406,29 @@ is not possible, as the data is encrypted as presented in \ref{data_structures}.
 PEP's table \ref{data_structures} does not contain the identity of participants. It instead contains pseudonyms, and the link between these pseudonyms and the participants' identities is 
 established inside the CRM \ref{CRM}. \par
 It would be possible to write a component that sits in front of the CRM. The study participant discloses his own identity to that component
-using Yivi and the component uses the disclosed identity to look up the corresponding pseudonym inside the CRM. But, since accessing the data inside the CRM gives the ability to deanonimyze the study participants, this access is very constrained and it would 
+using Yivi and the component uses the disclosed identity to look up the corresponding pseudonym inside the CRM using Salesforce's API \cite{salesforce}. But, since accessing the data inside the CRM gives the ability to deanonimyze the study participants, this access is very constrained and it would 
 be risky to approach the CRM also as part of a solution to let participants consult their data. Obviously, each participant must have access to its own data only, so there is the
-need to link a person to a specific row of PEP's table, but without (directly) using the person's identity. A way of obtaining the needed result, could be to give study participants their own
-PEP ID \ref{pseudonyms} during a study's registration phase as an Yivi credential, but this approach has been deemed to be risky by the PEP team, as it could reveal more information
-than needed. Another possibility could be to give participants a re-shuffled \ref{elgamal_recap} version of their PEP ID, a.k.a a local pseudonym \ref{pseudonyms}. The problem here is that PEP's
-table does not contain the local pseudonyms, those get computed when someone accesses the data. So when logging in, PEP doesn't know what are the possible local pseudonyms
-associated to a specific participant, thus it cannot link a person to its row this way. Another way is to add a new column to PEP's table, containing a random identifier that can
-be given to the study participant as an Yivi credential when they register for a study. This would already be a working solution, as it would be possible to write a new PEP
+need to link a person to a specific row of PEP's table, but without (directly) using the person's identity. \par
+A way of obtaining the needed result, could be to give study participants their own
+PEP ID \ref{pseudonyms} during a study's registration phase as a Yivi credential, but this approach has been deemed to be risky by the PEP team, as it could reveal more information
+than needed. \par
+Another possibility could be to give participants a re-shuffled \ref{elgamal_recap} version of their PEP ID, a.k.a. a local pseudonym \ref{pseudonyms}. The problem here is that PEP's
+table does not contain the local pseudonyms, those get computed on-demand when someone accesses the data. So when logging in, PEP doesn't know what are the possible local pseudonyms
+associated to a specific participant\footnote{It would need to compute all the used local pseudonyms for a given study participant, which is clearly inefficient.}, thus it cannot
+easily link a person to its row this way. \par
+Another way is to add a new column to PEP's table, containing a random identifier that can
+be given to the study participant as a Yivi credential when they register for a study. This would already be a working solution, as it would be possible to write a new PEP
 component that, during the login phase, looks at the disclosed credential and links the participant to its own row; thus giving them access to that row only. But this would require
-to modify PEP's table to add an additional column. While this change is minor, it can be avoided with a slightly better design: create a new user and use PEP's permission system\todo{add
-ref} to limit this user's access only to the row and columns containing the medical data of the corresponding participant. Steps: Give this user access only to the relevant columns. Create a group that contains its row only. Give the user access only to that group. Name the user the same as the
-generated credential, so that the credential can be easily liked to the user. \todo{explain *much better* this solution}. Now we have a privacy-preserving link between a person and
+to modify PEP's table to add an extra column. \par
+While that would be a minor change, it can be avoided with a slightly better design: create a new user and use PEP's permission system\todo{add
+ref} to limit this user's access only to the row and columns containing the medical data of the corresponding participant. The username will be the string \enquote*{participant:}
+prepended to a random string. The same value as the username is given as a Yivi credential to the study participant. Then, the data administrator creates a new participant group containing only
+that user and the access administrator gives that user access to that group and to the columns containing medical data. Upon login, the user discloses its Yivi credential. Since
+the credential's value is the same as the username assigned to the participant, it is now possible to link the participant to its own row. Given the credential is a random
+identifier, it doesn't carry any information about the person's identity. This solution carries the additional advantage of not storing such random identifier inside PEP's table,
+which, in addition to not requiring the addition of a new column to PEP's table, it also serves as a form of defence in depth protecting from researchers reading these random
+identifiers due to a configuration error on the access administrator's side. In fact, if that happened, researchers would be able to trivially correlate participants across different
+datasets: contrary to local pseudonyms \ref{pseudonyms}, this identifier does not change based upon the context and is instead fixed. Now we have a privacy-preserving link between a person and
 its row inside PEP's table.  
 
 \section{Failed attempt}
@@ -429,26 +449,26 @@ Here is a BPMN diagram of the process that would be required to register a new s
 
 Due to formatting constraints, the relative data access flow is available here \cite{data-access-failed-attempt-bpmn-diagram}.
 
-This solution requires to generate a credential that lets a study participant authenticate to PEP, but without leaking the participant's identity. To be in line with PEP's own
-design choices, I decided to use the string "participant:" followed by a random string as an identifier that gets linked to the participant during the registration phase. Such string is 
+This solution requires generating a credential that lets a study participant authenticate to PEP, but without leaking the participant's identity. To be in line with PEP's own
+design choices, I decided to use the string \enquote*{participant:} followed by a random string as an identifier that gets linked to the participant during the registration phase. Such string is 
 a version 4 UUID as described in RFC 4122 \cite{uuid_rfc}.  
 
 \subsection{Version 4 UUID}
 A version 4 UUID is a 128 bits-long value, usually represented as a string of hyphen-separated hexadecimal values. 6 bits are set to predetermined values, this leaves 122 bits of
-randomness. But the goal of UUID is to have identifiers that do not collide, not to have unpredictable values. In fact, the specification says: "Do not assume that UUIDs are hard
-to guess; they should not be used as security capabilities (identifiers whose mere possession grants access), for example. A predictable random number source will exacerbate the
-situation.". So the aforementioned 122 bits of entropy have to be considered only to evaluate the robustness against collisions. UUIDs should not be considered as a secret key, as
+randomness. But the goal of UUID is to have identifiers that do not collide, not to have unpredictable values. In fact, the specification says: \enquote*{Do not assume that UUIDs are 
+hard to guess; they should not be used as security capabilities (identifiers whose mere possession grants access), for example. A predictable random number source will exacerbate the
+situation.}. So the aforementioned 122 bits of entropy have to be considered only to evaluate the robustness against collisions. UUIDs should not be considered as a secret key, as
 the standard doesn't guarantee that they are hard to predict. The security against an adversary finding out a valid UUID and trying to forge a credential is given by Yivi and has
 no correlation with properties of UUID other than their resistance to collisions.
 
-\subsection{Estimating collision probability: the birthday paradox}\todo{Re-read everything and rewrite better e.g. by putting p=, pbar= etc}
+\subsection{Estimating collision probability: the birthday paradox}
 To analyze the probability of two version 4 UUIDs colliding, we apply the birthday paradox. 
 This paradox answers the following question: what is the probability that two or more people share the same birthday in a group of $n$ people? It is often used in Cryptology to
-establish an upper bound on the security offered by an hash function, and can be used in general to evaluate the probability of obtaining the same result twice out of a uniformly random
+establish an upper bound on the security offered by a hash function, and can be used in general to evaluate the probability of obtaining the same result twice out of a uniformly random
 process. \par
 To answer the paradox's question, it is easier to first compute the probability that no one has the same birthday, and then compute the complement probability. We start by ordering all 
 the people in the group, and then for each of them we ask what is the probability that that person doesn't share its birthday with any of the previous ones. We will consider only years
-of 365 days and assume that all days are equally likely to have births. We will further assume that each birth is an event independent from all the other births, so we are not
+of 365 days and assume that all days are equally likely to have births. We will further assume that each birth is an event independent of all the other births, so we are not
 considering the case of twins. For the first person, the
 probability is 1, since we are not considering any other person yet. Then, the probability of the second person not sharing their birthday with the previous one is the probability
 that this person is born in any day of the year other than the day the first person was born in: $1-\frac{1}{365}$. For the third person, the probability of not sharing the
@@ -471,7 +491,9 @@ P("Collision")=1- \prod_{k=1}^{n-1}(1-\frac{k}{u})
 \end{equation}
 
 Computing the exact value for large values of $n$ and $u$ is prohibitive. For this reason, it is often used an approximation of the above formula. To derive it, we have to look at the
-problem from a slightly different perspective. To see if there are collisions, we can first generate the required amount of UUIDs. Then we can construct all possible UUID pairs, and ask 
+problem from a slightly different perspective. Let's imagine to have a box containing all the possible UUIDs. For each person, we pick a UUID from the box, write it down to assign
+it to that person and then put it back in the box. We also re-shuffle the content of the box before extracting a new one, otherwise recently-extracted UUIDs would have a higher
+chance to be extracted compared to new ones. To see if there are collisions, we now consider all the possible pairs of people, and ask 
 for each pair if the two UUIDs are the same or not. Each comparison is a Bernoulli trial, so when we consider a sequence of such comparisons we obtain a binomial distribution.
 Let's introduce a random variable $X$ counting the number of collisions. We have that $X \sim B(m,p)$, where $m$ is the cardinality of the set of all possible pairs and $p$ is the
 probability that a given pair represents a collision. So $m=\binom{n}{2}$ and $p=\frac{1}{u}$. We can now use the binomial distribution's probability mass function to compute the
@@ -487,7 +509,7 @@ And so the probability of finding at least a collision is:
 		P(X \geq 1)=1-P(X=0)=1-(1-\frac{1}{u})^{\binom{n}{2}}
 \end{equation}
 
-This is already an approximation of the problem: formula \ref{uuid_collision_exact_formula} was correctly telling us that, if we generate more UUIDs than the number of
+We can notice an issue with this modeling of the problem: formula \ref{uuid_collision_exact_formula} was correctly telling us that, if we generate more UUIDs than the number of
 possible distinct UUIDs, we must get a collision. In this new formulation of the problem instead, the term $(1-\frac{1}{u})^{\binom{n}{2}}$ will approach zero for increasing values of
 $n$, but will never be \emph{exactly} zero. So formula \ref{uuid_collision_binomial_approximation} will never give us absolute certainty of finding a collision. This behavior
 results from modelling each attempt at finding a collision as a Bernoulli trial. For an experiment to be a Bernoulli trial, it must satisfy two conditions: 
@@ -495,38 +517,68 @@ results from modelling each attempt at finding a collision as a Bernoulli trial.
 		\item The experiment admits only two, mutually-exclusive, outcomes
 		\item Repeating the experiment multiple times does not change the probability of the outcomes
 \end{enumerate}
-Here the issue arises due to the second condition: we are picking elements from a set (the set of all possible pairs formed with the generated UUIDs) \emph{without replacement}, while
-for the assumption to hold we should pick elements with replacement. Due to the big amount of possible UUIDs, the increase in the chances of finding a collision for each new UUID
-pair we extract from the set is negligible, but it is still there and manifests itself by having a formula that approaches the correct answer instead of giving the exact result. \par
+Here the issue arises due to the second condition: it holds if we are generating an amount of UUIDs which is less or equal to the total number of possible UUIDs, but it trivially
+breaks down if we generate more UUIDs than the number of possible distinct UUIDs. We can fix it by considering these two cases separately:
 
-This is still not the approximation we are looking for, as again computing its outcome for big values of $u$ and $n$ is computationally intensive.
-But, while rewriting the result in this form does not help computing it per se, we can now use the fact that this is a binomial distribution to apply a Poisson approximation. If we have
-a binomial distribution with parameters $n \geq 20$ and $p \leq 0.05$ or $n \geq 100$ and $p \leq 0.1$ a Poisson distribution of parameter $\lambda=np$ is a good approximation. Under this assumption, we can say that the
-probability of not having collisions is $e^{-\lambda}$ and, finally, the probability of having at least one collision is
-
-\begin{equation} \label{uuid_collision_poisson_approximation}
-		P(X \geq 1)=1-e^{-\lambda}
+\begin{equation} \label{uuid_collision_binomial_model}
+		P(X \geq 1)=
+		\begin{cases}
+				1-(1-\frac{1}{u})^{\binom{n}{2}} & n \leq u \\
+				1 & n > u
+		\end{cases}
 \end{equation}
 
-where $\lambda=np$.
+This is still not the expression we are looking for, as again computing its outcome for big values of $u$ and $n$ is computationally intensive.
+But, while rewriting the result in this form does not help computing it per se, we can now use the fact that this is a binomial distribution to apply a Poisson approximation. If we have
+a binomial distribution of parameters $n$ and $p$ where 
+\begin{equation}\label{condition_for_poisson_approximation}
+	n \geq 20 \land p \leq 0.05 \lor n \geq 100 \land p \leq 0.1 
+\end{equation}
+a Poisson distribution of parameter $\lambda=np$ is a good approximation \cite{source_for_poisson_approximation}. Under this assumption, we can say that the
+probability of not having collisions is
 
-We can empirically check how close these approximations are compared to the exact computation by plotting the results for the case of $365$ possible birthdays or objects.
+\begin{equation}
+		P(X=0)=
+		\begin{cases}
+			e^{-\lambda} & n \leq u \\
+			0 & n > u
+	\end{cases}
+\end{equation}
+
+and, finally, the probability of having at least one collision is
+
+\begin{equation} \label{uuid_collision_poisson_approximation}
+		P(X \geq 1)=
+		\begin{cases}
+				1-e^{-\lambda} & n \leq u \\
+				1 & n > u
+		\end{cases}
+\end{equation}
+
+where $\lambda=np$.\newline
+
+We can empirically see how close these different modelings of the problem are to each other by plotting the results for the case of $365$ possible birthdays or objects.
 
 \begin{figure}[H]
 		\includegraphics[scale=0.5]{Exact probability vs approximations}
 		\caption{Probability of finding at least one collision when picking from a set of 365 object, computed with the methods presented above for groups from 20 to 100 people}
 \end{figure}
+\noindent
+The above graph shows that the binomial model is equivalent to the one obtained by applying the birthday paradox. Furthermore, when condition \ref{condition_for_poisson_approximation} is satisfied, the
+Poisson approximation allows us to get a result close to the exact value while being much less expensive to compute.
 
 \subsubsection{Application to version 4 UUID}
 Version 4 UUIDs are 128 bits long, of which 6 are fixed and 122 are randomly generated. So we have $u=2^{122}$ possible UUIDs. Assuming a uniformly random number generator is used, this gives us
-$p=\frac{1}{u}=\frac{1}{2^{122}}$. So the condition on $p$'s value is statisfied. We can easily see from any of the previous modelings of the problem that, the more UUIDs get generated, the more likely it is to find a
-collision. Let's then consider two extreme cases and see what the probability would be to have a collision. \par
+$p=\frac{1}{u}=\frac{1}{2^{122}}$. So the condition on $p$'s value is satisfied. We can easily see from any of the previous modelings of the problem that, the more UUIDs get generated, the more likely it is to find a
+collision. This nice fact lets us consider worst-case scenarios while also satisfying the condition on the value of $n$ that makes the Poisson approximation close to the exact result,
+saving us quite a lot of computations. Let's then consider two extreme cases and see what the probability would be to have a collision. \par
 The first case is to generate one UUID for each person in the world. At the time of writing, the global population is estimated to be around \num{8088000000} people
 \cite{world-population}. By plugging these numbers in formula \ref{uuid_collision_poisson_approximation}, we obtain that in this scenario
 
 	$$P("Collision")=1-e^{-\lambda}=1-e^{-\frac{8088000000}{2^{122}}} \approx 1.52 \times 10^{-27}$$
 
-The second scenario is to have each person in the world taking part in 100 studies and getting a separate credential for each one of them. By using formula
+The second scenario is to have each person in the world taking part in 100 studies and getting a separate credential for each one of them (or, equivalently, the world population
+increasing 100 times). By using formula
 \ref{uuid_collision_poisson_approximation} again, we get
 
 $$P("Collision")=1-e^{-\lambda}=1-e^{-\frac{808800000000}{2^{122}}} \approx 1.52 \times 10^{-25}$$ 
@@ -537,31 +589,30 @@ Both results are negligible. For comparison, the probability of dying in a given
 \subsection{Implementation} \todo{talk about registration component}
 
 To implement this, I first stared by writing a registration component. This component is in charge of generating credentials for study participants and issuing the corresponding
-Yivi cards.  
-To implement this, I tried setting up SimpleSAMLphp \cite{simplesamlphp} to work as an YIVI \cite{about-irma} identity provider. SimpleSAMLphp can work both as a service provider and
-as an identity provider, and can be extended by writing PHP plugins. There were already two previous attempts about writing such a plugin: 
-"simplesamlphp-module-authirma" \cite{simplesamlphp-module-authirma} by the Privacy by Design Foundation \cite{privacybydesignfoundation} and "irma-idp" \cite{irma-idp} by SURF \cite{surf}.
-Both appear to be unmaintained, but I first attempted to use those as a basis for my own implementation. \par
-I started by setting up a local YIVI server inside a Docker container and creating a demo credential \cite{irma-docs-issuer} for PEP study participants, called "irma-demo.PEP.id". I
-then tried making "simplesamlphp-module-authirma" work again. It was developed at a time where the YIVI HTTP server and the YIVI JSON API server where two separate components. While
-trying to make it work again, I stumbled upon the problem of getting the keys for the API and web servers. Probably the key is the same for both, as now the irmago
-server \cite{irma-docs-server} implements both, but I was not able to find the certificate in the required format inside my Docker container. \par
-After failing to make "simplesamlphp-module-authirma" work again, I did some more research on previous work and found out about "irma-idp". It is more recent and, while it still
-appears to be unmaintained, at least uses the current architecture where irmago provides both the HTTP server and JSON API server components \cite{irma-docs-server}. But this
-project lacks configuration instructions and, again, I was not able to find the required certificate by trying the method reported in the repository's README \cite{irma-idp}. I asked 
-for clarification in a GitHub issue, but to date I got no answer \cite{irma-idp-issue}. Additionally, looking at the code inside the repository it looked to either be incomplete or
-contain an error: the HTML code inside the "disclose.html" file contains a "Verify attribute" button that does not do anything, and there is no way to trigger the redirect specified
-inside the form. Likely the idea was to redirect the user upon clicking the aforementioned button, but in this case the code should have been written differently. \par
-Since "simplesamlphp-module-authirma" is unmaintained and targeted an old YIVI server implementation, and "irma-idp" appears to be abandoned in a non-working state and with lacking
-documentation, I decided to write my own SimpleSAMLphp plugin instead of adapting old projects to work with the new irmago implementation. This is because attempting to fix these
-old implementations could have entailed a significant rewrite of their code, so I decided to start afresh. I installed and configured SimpleSAMLphp \cite{simplesamlphp-docs} as a SAML identity
-provider \cite{sstc-saml-core-errata-2.0-wd-07} inside a Docker container, then I followed its documentation to write an authentication source talking with an YIVI server.
-SimpleSAMLphp lets a developer write its own authentication flow. After authentication is completed, one has to pass to SimpleSAMLphp the relative attribute and it will take care
-of generating a SAML assertion and send it to the user. Internally, it implements a state machine going through the different authentication steps. If a redirect is necessary
-during the authentication flow, it is necessary to save the authentication state and then  restore it after the redirect. Since I had to show the user a custom page containing a QR
-code to disclose its own YIVI credentials, I needed to save the state and perform a redirect. I could confirm the state was saved on a temporary file, but attempting to restore it
-failed. It was likely a configuration error, but asking SimpleSAMLphp's developers for help didn't turn anything. After trying to fix this issue for some time I abandoned this
-path.
+Yivi cards.  To implement this, I tried setting up SimpleSAMLphp \cite{simplesamlphp} to work as an YIVI \cite{about-irma} identity provider. SimpleSAMLphp can work both as a
+service provider and as an identity provider, and can be extended by writing PHP plugins. There were already two previous attempts about writing such a plugin:
+\enquote*{simplesamlphp-module-authirma} \cite{simplesamlphp-module-authirma} by the Privacy by Design Foundation \cite{privacybydesignfoundation} and \enquote*{irma-idp}
+\cite{irma-idp} by SURF \cite{surf}.  Both appear to be unmaintained, but I first attempted to use those as a basis for my own implementation. \par I started by setting up a local
+YIVI server inside a Docker container and creating a demo credential \cite{irma-docs-issuer} for PEP study participants, called \enquote{irma-demo.PEP.id}. I then tried making
+\enquote*{simplesamlphp-module-authirma} work again. It was developed at a time when the YIVI HTTP server and the YIVI JSON API server where two separate components. While trying
+to make it work again, I stumbled upon the problem of getting the keys for the API and web servers. Probably the key is the same for both, as now the irmago server
+\cite{irma-docs-server} implements both, but I was not able to find the certificate in the required format inside my Docker container. \par After failing to make
+\enquote*{simplesamlphp-module-authirma} work again, I did some more research on previous work and found out about \enquote{irma-idp}. It is more recent and, while it still appears
+to be unmaintained, at least uses the current architecture where irmago provides both the HTTP server and JSON API server components \cite{irma-docs-server}. But this project lacks
+configuration instructions and, again, I was not able to find the required certificate by trying the method reported in the repository's README \cite{irma-idp}. I asked for
+clarification in a GitHub issue, but to date I got no answer \cite{irma-idp-issue}. Additionally, looking at the code inside the repository it looked to either be incomplete or
+contain an error: the HTML code inside the \enquote*{disclose.html} file contains a \enquote*{Verify attribute} button that does not do anything, and there is no way to trigger the
+redirect specified inside the form. Likely the idea was to redirect the user upon clicking the aforementioned button, but in this case the code should have been written
+differently. \par Since \enquote*{simplesamlphp-module-authirma} is unmaintained and targeted an old YIVI server implementation, and \enquote*{irma-idp} appears to be abandoned in
+a non-working state and with lacking documentation, I decided to write my own SimpleSAMLphp plugin instead of adapting old projects to work with the new irmago implementation. This
+is because attempting to fix these old implementations could have entailed a significant rewrite of their code, so I decided to start afresh. I installed and configured
+SimpleSAMLphp \cite{simplesamlphp-docs} as a SAML identity provider \cite{sstc-saml-core-errata-2.0-wd-07} inside a Docker container, then I followed its documentation to write an
+authentication source talking with an YIVI server.  SimpleSAMLphp lets a developer write its own authentication flow. After authentication is completed, one has to pass to
+SimpleSAMLphp the relative attribute and it will take care of generating a SAML assertion and send it to the user. Internally, it implements a state machine going through the
+different authentication steps. If a redirect is necessary during the authentication flow, it is necessary to save the authentication state and then restore it after the redirect.
+Since I had to show the user a custom page containing a QR code to disclose its own YIVI credentials, I needed to save the state and perform a redirect. I could confirm the state
+was saved on a temporary file, but attempting to restore it failed. It was likely a configuration error, but asking SimpleSAMLphp's developers for help didn't turn anything. After
+trying to fix this issue for some time I abandoned this path.
 
 \iffalse
 
