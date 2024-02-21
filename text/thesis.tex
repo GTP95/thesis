@@ -17,6 +17,7 @@
 \usepackage[british]{babel} %makes csquotes work as expected
 \usepackage{etoolbox} %csquotes dependency
 \usepackage{csquotes} %LaTex is great for math, less great for putting words in double quotes. This is a fix for that. See https://blog.chapagain.com.np/latex-fix-for-backward-quotation-mark/
+\usepackage{listings, listings-rust} %code listings
 
 \graphicspath{ {./images/} }
 
@@ -124,7 +125,7 @@ data. This constitutes a problem, as article 15 of the GDPR states that \enquote
 personal data concerning him or her are being processed, and, where that is the case, access to the personal data [...]} \cite{gdpr-art-15}. 
 This work is aimed at finding and developing a solution to this issue.
 
-\section{An introduction to PEP's internals} \todo{Implement feedback about user groups}
+\section{An introduction to PEP's internals}
 This section gives an overview of the inner workings of PEP. To discuss PEP's internals, we will consider three category of users: administrators, researchers and participants.
 Administrators are in charge of managing PEP and of configuring it properly, researchers are scientists accessing the data stored inside PEP as part of some
 scientific investigation and participants are people taking part in medical studies as data contributors. When something applies to both administrators and researchers, we will adopt the generic term
@@ -400,36 +401,34 @@ columns or rows to the PEP table and managing permissions. Therefore, it impleme
 \section{The issue at play}
 \subsection{Authenticating study participants, but how?}
 The primary goal of this work is to give study participants access to their own data, while also protecting their privacy. Secondarily, the solution should require only limited
-changes to the already existing design and infrastructure of PEP, and also work for study participants that are already registered inside PEP.\par
-Direct access via some mechanism external from PEP
-is not possible, as the data is encrypted as presented in \ref{data_structures}. This means that one has to go through PEP to get the right key and decrypt a piece of data. So it is necessary to design a solution that integrates with the rest of PEP's architecture. Additionally, 
-PEP's table \ref{data_structures} does not contain the identity of participants. It instead contains pseudonyms, and the link between these pseudonyms and the participants' identities is 
-established inside the CRM \ref{CRM}. \par
-It would be possible to write a component that sits in front of the CRM. The study participant discloses his own identity to that component
-using Yivi and the component uses the disclosed identity to look up the corresponding pseudonym inside the CRM using Salesforce's API \cite{salesforce}. But, since accessing the data inside the CRM gives the ability to deanonimyze the study participants, this access is very constrained and it would 
-be risky to approach the CRM also as part of a solution to let participants consult their data. Obviously, each participant must have access to its own data only, so there is the
-need to link a person to a specific row of PEP's table, but without (directly) using the person's identity. \par
-A way of obtaining the needed result, could be to give study participants their own
-PEP ID \ref{pseudonyms} during a study's registration phase as a Yivi credential, but this approach has been deemed to be risky by the PEP team, as it could reveal more information
-than needed. \par
-Another possibility could be to give participants a re-shuffled \ref{elgamal_recap} version of their PEP ID, a.k.a. a local pseudonym \ref{pseudonyms}. The problem here is that PEP's
-table does not contain the local pseudonyms, those get computed on-demand when someone accesses the data. So when logging in, PEP doesn't know what are the possible local pseudonyms
-associated to a specific participant\footnote{It would need to compute all the used local pseudonyms for a given study participant, which is clearly inefficient.}, thus it cannot
-easily link a person to its row this way. \par
-Another way is to add a new column to PEP's table, containing a random identifier that can
-be given to the study participant as a Yivi credential when they register for a study. This would already be a working solution, as it would be possible to write a new PEP
-component that, during the login phase, looks at the disclosed credential and links the participant to its own row; thus giving them access to that row only. But this would require
-to modify PEP's table to add an extra column. \par
-While that would be a minor change, it can be avoided with a slightly better design: create a new user and use PEP's permission system\todo{add
-ref} to limit this user's access only to the row and columns containing the medical data of the corresponding participant. The username will be the string \enquote*{participant:}
-prepended to a random string. The same value as the username is given as a Yivi credential to the study participant. Then, the data administrator creates a new participant group containing only
-that user and the access administrator gives that user access to that group and to the columns containing medical data. Upon login, the user discloses its Yivi credential. Since
-the credential's value is the same as the username assigned to the participant, it is now possible to link the participant to its own row. Given the credential is a random
-identifier, it doesn't carry any information about the person's identity. This solution carries the additional advantage of not storing such random identifier inside PEP's table,
-which, in addition to not requiring the addition of a new column to PEP's table, it also serves as a form of defence in depth protecting from researchers reading these random
-identifiers due to a configuration error on the access administrator's side. In fact, if that happened, researchers would be able to trivially correlate participants across different
-datasets: contrary to local pseudonyms \ref{pseudonyms}, this identifier does not change based upon the context and is instead fixed. Now we have a privacy-preserving link between a person and
-its row inside PEP's table.  
+changes to the already existing design and infrastructure of PEP, and also work for study participants that are already registered inside PEP.\par Direct access via some mechanism
+external from PEP is not possible, as the data is encrypted as presented in \ref{data_structures}. This means that one has to go through PEP to get the right key and decrypt a
+piece of data. So it is necessary to design a solution that integrates with the rest of PEP's architecture. Additionally, PEP's table \ref{data_structures} does not contain the
+identity of participants. It instead contains pseudonyms, and the link between these pseudonyms and the participants' identities is established inside the CRM \ref{CRM}. \par 
+It would be possible to write a component that sits in front of the CRM. The study participant discloses his own identity to that component using Yivi and the component uses the
+disclosed identity to look up the corresponding pseudonym inside the CRM using Salesforce's API \cite{salesforce}. But, since accessing the data inside the CRM gives the ability to
+deanonimyze the study participants, this access is very constrained and it would be risky to approach the CRM also as part of a solution to let participants consult their data.
+Obviously, each participant must have access to its own data only, so there is the need to link a person to a specific row of PEP's table, but without (directly) using the person's
+identity. \par 
+A way of obtaining the needed result, could be to give study participants their own PEP ID \ref{pseudonyms} during a study's registration phase as a Yivi credential,
+but this approach has been deemed to be risky by the PEP team, as it could reveal more information than needed. \par Another possibility could be to give participants a re-shuffled
+\ref{elgamal_recap} version of their PEP ID, a.k.a. a local pseudonym \ref{pseudonyms}. The problem here is that PEP's table does not contain the local pseudonyms, those get
+computed on-demand when someone accesses the data. So when logging in, PEP doesn't know what are the possible local pseudonyms associated to a specific participant\footnote{It
+would need to compute all the used local pseudonyms for a given study participant, which is clearly inefficient.}, thus it cannot easily link a person to its row this way. \par
+Another way is to add a new column to PEP's table, containing a random identifier that can be given to the study participant as a Yivi credential when they register for a study.
+This would already be a working solution, as it would be possible to write a new PEP component that, during the login phase, looks at the disclosed credential and links the
+participant to its own row; thus giving them access to that row only. But this would require to modify PEP's table to add an extra column. \par 
+While that would be a minor change,
+it can be avoided with a slightly better design: create a new user and use PEP's permission system\todo{add ref} to limit this user's access only to the row and columns containing
+the medical data of the corresponding participant. The username will be the string \enquote*{participant:} prepended to a random string. The same value as the username is given as
+a Yivi credential to the study participant. Then, the data administrator creates a new participant group containing only that user and the access administrator gives that user
+access to that group and to the columns containing medical data. Upon login, the user discloses its Yivi credential. Since the credential's value is the same as the username
+assigned to the participant, it is now possible to link the participant to its own row. Given the credential is a random identifier, it doesn't carry any information about the
+person's identity. This solution carries the additional advantage of not storing such random identifier inside PEP's table, which, in addition to not requiring the addition of a
+new column to PEP's table, it also serves as a form of defence in depth protecting from researchers reading these random identifiers due to a configuration error on the access
+administrator's side. In fact, if that happened, researchers would be able to trivially correlate participants across different datasets: contrary to local pseudonyms
+\ref{pseudonyms}, this identifier does not change based upon the context and is instead fixed. Now we have a privacy-preserving link between a person and its row inside PEP's
+table.  
 
 \section{Failed attempt}
 At the beginning of this work, I considered many possible solutions, that either turned out to not respect PEP's privacy standard or were deemed risky by the PEP team. Other
@@ -451,9 +450,11 @@ Due to formatting constraints, the relative data access flow is available here \
 
 This solution requires generating a credential that lets a study participant authenticate to PEP, but without leaking the participant's identity. To be in line with PEP's own
 design choices, I decided to use the string \enquote*{participant:} followed by a random string as an identifier that gets linked to the participant during the registration phase. Such string is 
-a version 4 UUID as described in RFC 4122 \cite{uuid_rfc}.  
+a version 4 UUID as described in RFC 4122 \cite{uuid_rfc}. The reason for prepending the string \enquote*{participant:} is that this makes it clear that the attribute is related to
+a study participant. This can be used in the future to automatize or simplify some aspects of this login solution in the future by writing some logic specific for the case of
+participants authentication. Some suggestions of where this can be applied will be presented where relevant.
 
-\subsection{Version 4 UUID}
+\subsubsection{Version 4 UUID}
 A version 4 UUID is a 128 bits-long value, usually represented as a string of hyphen-separated hexadecimal values. 6 bits are set to predetermined values, this leaves 122 bits of
 randomness. But the goal of UUID is to have identifiers that do not collide, not to have unpredictable values. In fact, the specification says: \enquote*{Do not assume that UUIDs are 
 hard to guess; they should not be used as security capabilities (identifiers whose mere possession grants access), for example. A predictable random number source will exacerbate the
@@ -461,7 +462,7 @@ situation.}. So the aforementioned 122 bits of entropy have to be considered onl
 the standard doesn't guarantee that they are hard to predict. The security against an adversary finding out a valid UUID and trying to forge a credential is given by Yivi and has
 no correlation with properties of UUID other than their resistance to collisions.
 
-\subsection{Estimating collision probability: the birthday paradox}
+\subsubsection{Estimating collision probability: the birthday paradox}
 To analyze the probability of two version 4 UUIDs colliding, we apply the birthday paradox. 
 This paradox answers the following question: what is the probability that two or more people share the same birthday in a group of $n$ people? It is often used in Cryptology to
 establish an upper bound on the security offered by a hash function, and can be used in general to evaluate the probability of obtaining the same result twice out of a uniformly random
@@ -585,6 +586,157 @@ $$P("Collision")=1-e^{-\lambda}=1-e^{-\frac{808800000000}{2^{122}}} \approx 1.52
 
 Both results are negligible. For comparison, the probability of dying in a given year due to an asteroid impact is estimated to be between $3.33 \times 10^{-8}$ and $5 \times
 10^{-7}$, depending on the type of impact \cite{death-by-asteroid}.
+
+\subsubsection{The Rust programming language and memory safety}\todo{This is my chance of making Erik Poll proud, don't miss it.}
+This solution requires to write some custom code, so we needed to choose a suitable programming language. In such a choice, there's always a subjective part, and for me , it was
+the curiosity of learning this new language. Subjective judgment aside, there are also good objective reasons to pick Rust. \par
+PEP's codebase is written in C++, so we either need to use C++ itself or a language that nicely integrates with a C++ codebase. Additionally, PEP focuses on security, since it
+handles medical data. Rust aims at being a substitute for C and C++ while also offering strong memory safety guarantees. It is also designed to fit with pre-existing C and C++
+code. \par
+Memory safety is a property of some programming languages that perform memory management in such a way to prevent errors like segmentation fault and double free. A computer's
+available volatile memory is split into two parts: a stack and a heap. While most programming languages take care of automatically managing the data that lives on the stack,
+managing the heap memory is more complicated. Although storing data on the heap always needs to be done explicitly, freeing no-longer-needed memory can be approached in two
+different ways: either provide an automatic mechanism to free such memory, usually in the form of a garbage collector, or leave to the programmer the responsibility to free unused
+memory at the right time. The former approach is memory-safe, but it comes at a performance cost, while the latter can be very efficient but it is also error-prone. \par
+There are two types of memory safety: spatial and temporal. Spatial memory safety prevents attempts at accessing the wrong regions in memory. For example, segmentation faults and
+buffer overflows are violations of spatial memory safety: the former because it is the result of an attempt of accessing an invalid memory address, the latter because it is an
+attempt at writing to a memory region more data than what it can contain, resulting in a write past its boundary.\todo{find sources}. Temporal memory safety ensures that a program
+can only access valid data, and when a piece of data becomes invalid it is not accessible anymore. Examples of violations of temporary memory safety are double-free errors and
+dangling pointers. A double-free error is when \enquote*{free()} is called twice on the same memory region. This corrupts the program's memory management structure and can cause
+the program to crash or to alter its execution flow \cite{double-free}. A dangling pointer is a pointer to a memory region that has been freed. Using such memory leads to undefined
+system behavior. \par
+
+Rust aims at ensuring both temporal and spatial memory safety, without a meaningful performance hit. The core mechanism that allows Rust to accomplish this is the concept of
+ownership. Ownership is a set of rules defining how Rust manages memory. These rules ensure memory safety and are checked by the compiler at compile-time, so they carry no
+performance cost while the program is running. The fundamental observation at the core of those rules is that there's a natural place where memory can be deallocated, and it is when
+a value goes out of scope, thus it cannot be accessed anymore. Here are the main ownership rules, taken from \cite{rust_ownership_rules}:
+
+		\begin{itemize}
+				\item Each value in Rust has an owner.
+				\item There can only be one owner at a time.
+				\item When the owner goes out of scope, the value will be dropped.
+		\end{itemize}
+
+These rules are enforced by the borrow checker. It is a static analyzer inside the Rust compiler that makes sure no reference outlives the data it is pointing to. It also ensures
+that only one reference at a time is able to modify the underlining data. In Rust, a reference is a fat pointer \todo{add ref}, i.e. a pointer that, along with a memory address it
+is pointing to, it also carries additional information like the maximum amount of data that can be stored at that memory location and how much data is already stored there. 
+Every time a value is bound to a variable, that variable takes ownership of the underlying data, and when the owner, i.e. the variable, gets out of scope the relative memory is
+freed. Let's consider a simple example:
+
+\begin{lstlisting}[language=Rust, style=colouredRust]
+	{
+		let x=42;
+		let string=String::from("Lorem ipsum");
+	}
+\end{lstlisting}
+
+The curly braces define a new scope. In this scope, two variables are defined: one holding an integer value and another holding a reference to a string. In both cases, when the
+program execution reaches the closing curly brace the memory where the data is stored gets freed. \par
+Rust's behavior gets a bit more involved when assigning the value of a variable to another variable. Consider the following example:
+
+\begin{lstlisting}[language=Rust, style=colouredRust]
+	{
+		let x=42;
+		let y=x;
+		let string1=String::from("Lorem ipsum");
+		let string2=string1;
+	}
+\end{lstlisting}
+
+Here we observe two different behaviors, depending on whether a value is stored on the stack or on the heap. The variable \enquote*{x} is an integer, thus it is stored on the
+stack. Similarly to other programming languages, since this value lives on the stack, the statement \enquote*{let y=x} copies the value of \enquote*{x} into \enquote*{y}. Since we
+now have two independent copies of the value \enquote*{42}, there is no issue in deallocating the used memory at the end of the scope. The variable \enquote*{string1} contains instead
+a pointer to a string stored on the heap. Since duplicating heap data can be expensive, the statement \enquote*{let string2=string1} copies the pointer data from
+\enquote*{string1} into \enquote*{string2}, without allocating a new string. But this could be a problem, as now we have two pointers to the same memory region, and trying to deallocate both at the end of the
+scope would result in a double-free bug. To prevent this issue, the statement \enquote*{let string2=string1} doesn't just copy the pointer data, but it also invalidates the
+variable \enquote*{string1}. Since \enquote*{string1} is no longer valid, when the program reaches the end of the scope only \enquote*{string2} is deallocated, and there is no
+double-free. What happened from an ownership perspective, is that \enquote*{string1} was the original owner of the string, then the string got moved inside \enquote*{string2} which
+became the new owner. If we need two separate copies of the same heap data, we have to explicitly ask for it by invoking \enquote*{clone()}:
+
+\begin{lstlisting}[language=Rust, style=colouredRust]
+	let string1=String::from("Lorem ipsum");
+	let string2=string1.clone();
+\end{lstlisting}
+
+In this case, we have two distinct copies of the string. \par
+Passing values to a function works analogously to assigning a variable's value to another variable: stack data is copied, while heap data is passed by reference. this means that, in
+the case of heap data, the function becomes the new owner\footnote{It also owns the stack data, but since this data gets duplicated in this case the original owner does not lose
+ownership of its copy.}. Consider the following example:
+
+\begin{lstlisting}[language=Rust, style=colouredRust]
+	fn main(){
+		let x=42;
+		let string=String::from("Lorem ipsum");
+		function(x, string);
+		let y=x;
+		let string2=string;
+	}
+	fn function(mut answer: i32, mut latin: String){
+		answer+=1;
+		latin.push_str(" dolor sit amet");
+	}
+	
+\end{lstlisting}
+
+This example does not compile, as it violates ownership's rules. The variable \enquote*{x} behaves like in most programming languages: the function makes its own copy of the value
+42, increases it and when the function returns it gets deallocated. So when \enquote*{y} is assigned the value of \enquote*{x} after the function call, it gets the original value
+of 42. The problem lies with the string. In Rust's terminology, the string is \textit{moved} inside the function, i.e. the function takes ownership of the string without making a
+copy of the underlying data. This means that the string gets deallocated when the function returns, and it is no longer valid after the function call. Trying to compile this code
+fails with an \enquote*{use of moved value} error.\par
+
+One way of recovering values from inside a function is to return them. In this case, a function takes ownership of the values and then gives ownership back. Here is how it would
+look like:
+
+\begin{lstlisting}[language=Rust, style=colouredRust]
+    fn main(){
+    	let x=42;
+        let string=String::from("Lorem ipsum");
+        let (y, string2)=function(x, string);
+    }
+
+    fn function(mut answer: i32, mut latin: String) -> (i32, String){
+        answer+=1;
+        latin.push_str(" dolor sit amet");
+        (answer, latin)
+    }          
+\end{lstlisting}
+
+This example compiles successfully, as returning a value transfers its ownership to whatever variable it gets assigned to. In this specific example, we are using a tuple to return
+two values at once. Note also the use of the \enquote*{mut} keyword: by default, Rust variables are immutable, if something needs to be modified we need to explicitly declare a
+variable as mutable using \enquote*{mut}. \par
+
+Taking ownership of a value and then returning it every time that a function has to do some elaboration can be cumbersome: suppose we need to implement a function that says whether
+a string is palindrome or not. We would need to take ownership of the string and then return a tuple with both the original string and a boolean representing the answer, despite
+the fact that what we need from the function is just the boolean. This is where references and borrowing come into place. In Rust, a reference is a pointer that is guaranteed to be
+valid for its whole lifetime. Using a reference, we can \textit{borrow} a value: we can access it but without taking ownership of the value. Just like variables, also references
+are immutable by default, if we need to be able to change a value we need to explicitly ask for a mutable reference using the \enquote*{mut} keyword. Here is the previous example,
+rewritten using mutable references:
+\todo{fix formatting of this listing}
+\begin{lstlisting}[language=Rust, style=colouredRust]
+    fn main(){
+       	let mut x=42;
+        let mut string=String::from("Lorem ipsum");
+        function(&mut x, &mut string);
+        let y=x;
+        let string2=string;
+    }
+
+    fn function(answer: &mut i32, latin: &mut String){
+       	*answer+=1;
+        latin.push_str(" dolor sit amet");
+    }	
+\end{lstlisting}
+
+Note that, since we are using references to mutate variables, we need both to ask for mutable references and declare the variables as mutable. Otherwise the Rust compiler refuses
+to compile the code. To retain memory safety when using references, Rust's borrow checker analyzes the code to ensure the following two conditions are valid
+\cite{rust_ownership_rules}:
+
+\begin{enumerate}
+		\item At any time and for a given variable, there can be either exactly one mutable reference (and no immutable ones) or any number of immutable references.
+		\item References must be valid for their whole lifetime.
+\end{enumerate}
+
+The rationale for the first condition is preventing data races, while the second condition prevents dangling pointers.
 
 \subsection{Implementation} \todo{talk about registration component}
 
