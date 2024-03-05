@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<bpmn:definitions xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" id="Definitions_1v7rxp8" targetNamespace="http://bpmn.io/schema/bpmn" exporter="bpmn-js (https://demo.bpmn.io)" exporterVersion="11.5.0">
+<bpmn:definitions xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" id="Definitions_1v7rxp8" targetNamespace="http://bpmn.io/schema/bpmn" exporter="Camunda Modeler" exporterVersion="5.19.0">
   <bpmn:collaboration id="Collaboration_1p06kwq">
     <bpmn:participant id="Participant_0yi7ut7" name="Study participant" processRef="Process_0lkua27" />
     <bpmn:participant id="Participant_0shb5tl" name="PEP" processRef="Process_0i4fdht" />
@@ -18,11 +18,11 @@
       <bpmn:incoming>Flow_0c0uo0j</bpmn:incoming>
     </bpmn:endEvent>
     <bpmn:sequenceFlow id="Flow_0c0uo0j" sourceRef="Activity_0o8pwjg" targetRef="Event_0zblgmz" />
-    <bpmn:task id="Activity_0o8pwjg" name="Receives IRMA credentials">
+    <bpmn:task id="Activity_0o8pwjg" name="Receives Yivi credentials">
       <bpmn:outgoing>Flow_0c0uo0j</bpmn:outgoing>
     </bpmn:task>
   </bpmn:process>
-  <bpmn:process id="Process_0i4fdht">
+  <bpmn:process id="Process_0i4fdht" isExecutable="false">
     <bpmn:laneSet id="LaneSet_1dhytu8">
       <bpmn:lane id="Lane_0pqvkoi" name="Data administartor">
         <bpmn:flowNodeRef>Activity_0mca7r3</bpmn:flowNodeRef>
@@ -69,7 +69,7 @@
     <bpmn:sequenceFlow id="Flow_03572xj" name="Participant doesn&#39;t quialify" sourceRef="Gateway_0hbayaz" targetRef="Event_0d5e6nf" />
     <bpmn:sequenceFlow id="Flow_1mmp6fd" sourceRef="Activity_0mca7r3" targetRef="Activity_17mnvu1" />
     <bpmn:sequenceFlow id="Flow_04dwife" sourceRef="Activity_0l0oe9w" targetRef="Activity_0p4pmmk" />
-    <bpmn:task id="Activity_0p4pmmk" name="Issues IRMA credentials">
+    <bpmn:task id="Activity_0p4pmmk" name="Issues Yivi credentials">
       <bpmn:incoming>Flow_04dwife</bpmn:incoming>
     </bpmn:task>
     <bpmn:task id="Activity_0l0oe9w" name="Adds credentials to authentication server">

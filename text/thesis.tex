@@ -33,7 +33,7 @@
 %             ||               %
 %             \/               %
 
-\def\thesistitle{Designing and implementing a participant login solution for PEP using YIVI}
+\def\thesistitle{Designing and implementing a participant login solution for PEP using Yivi}
 %\def\thesissubtitle{Why I Definitely Deserve a Fields Medal}
 \def\thesisauthorfirst{Giacomo Tommaso}
 \def\thesisauthorsecond{Petrucci}
@@ -241,7 +241,7 @@ time.
 \subsection{Pseudonyms}\label{pseudonyms}
 As part of the registration procedure, each participant gets assigned a participant identifier, also known as PEP ID. This identifier is not used directly, but instead it serves as a 
 basis to generate local pseudonyms. These pseudonyms are called local because they do not depend solely on the participant identifier, but also on the usage context: different studies 
-involving the same participants or different researchers accessing the same dataset will get different local pseudonyms. So they have a menaning only in the \enquote*{local} context 
+involving the same participants or different researchers accessing the same dataset will get different local pseudonyms. So they have a meaning only in the \enquote*{local} context 
 where they are used. This is useful to prevent combining data across different datasets \footnote{It is still possible to link different local pseudonyms to the same participant by 
 comparing bit-by-bit complicated pieces of data, like brain scans, that are unlikely to be the same for different people. To mitigate this possibility, users have to sign an agreement 
 that forbids them to do such comparison.}. These local pseudonyms are obtained by encrypting the participant's identifier using ElGamal, and then applying the re-shuffle operation
@@ -317,7 +317,7 @@ administrator from misbehaving, as the tickets he uses to access the data will b
 PEP's servers are authenticated using TLS certificates. Clients instead authenticate themselves to the servers using PEP certificates \cite{pep-blueprint}. This is different from
 TLS' mutual authentication mechanism, as the client signs a request which is then transmitted over TLS. Such signed request is logged by PEP's transcryptor server for auditability. In
 both cases, the certificates are X.509 certificates \cite{X.509} issued by the key server using an intermediate certificate derived by PEP's root certificate \cite{pep-blueprint}.
-In the specific case of users, the user name is recorded as the common name of the PEP certificate, and the access group as the organisational unit.\par
+In the specific case of users, the username is recorded as the common name of the PEP certificate, and the access group as the organisational unit.\par
 PEP user certificates expire after a limited time\footnote{I don't know the exact lifespan of PEP user certificates. But my implementation does not store any data permanently on
 disk to harden against the possibility of leaking sensitive information if a study participant shares its computer with others. As a result of this choice, a new certificate gets
 generated at each login instead of attempting to reuse an old one, so the actual validity timespan of a PEP user certificate does not matter.} and are generated on-demand during a procedure called enrollment. 
@@ -413,22 +413,30 @@ identity. \par
 A way of obtaining the needed result, could be to give study participants their own PEP ID \ref{pseudonyms} during a study's registration phase as a Yivi credential,
 but this approach has been deemed to be risky by the PEP team, as it could reveal more information than needed. \par Another possibility could be to give participants a re-shuffled
 \ref{elgamal_recap} version of their PEP ID, a.k.a. a local pseudonym \ref{pseudonyms}. The problem here is that PEP's table does not contain the local pseudonyms, those get
-computed on-demand when someone accesses the data. So when logging in, PEP doesn't know what are the possible local pseudonyms associated to a specific participant\footnote{It
-would need to compute all the used local pseudonyms for a given study participant, which is clearly inefficient.}, thus it cannot easily link a person to its row this way. \par
+computed on-demand when someone accesses the data. So when logging in, PEP doesn't know what are the possible local pseudonyms associated to each participant\footnote{It
+would need to compute all the used local pseudonyms for all the registered study participants, which is clearly inefficient.}, thus it cannot easily link a person to its row this way. \par
 Another way is to add a new column to PEP's table, containing a random identifier that can be given to the study participant as a Yivi credential when they register for a study.
 This would already be a working solution, as it would be possible to write a new PEP component that, during the login phase, looks at the disclosed credential and links the
 participant to its own row; thus giving them access to that row only. But this would require to modify PEP's table to add an extra column. \par 
 While that would be a minor change,
-it can be avoided with a slightly better design: create a new user and use PEP's permission system\todo{add ref} to limit this user's access only to the row and columns containing
+it can be avoided with a slightly better design: create a new user and use PEP's permission system \ref{data_access} to limit this user's access only to the row and columns containing
 the medical data of the corresponding participant. The username will be the string \enquote*{participant:} prepended to a random string. The same value as the username is given as
 a Yivi credential to the study participant. Then, the data administrator creates a new participant group containing only that user and the access administrator gives that user
 access to that group and to the columns containing medical data. Upon login, the user discloses its Yivi credential. Since the credential's value is the same as the username
 assigned to the participant, it is now possible to link the participant to its own row. Given the credential is a random identifier, it doesn't carry any information about the
-person's identity. This solution carries the additional advantage of not storing such random identifier inside PEP's table, which, in addition to not requiring the addition of a
-new column to PEP's table, it also serves as a form of defence in depth protecting from researchers reading these random identifiers due to a configuration error on the access
+person's identity. This solution features the additional advantage of not storing such random identifier inside PEP's table, which, in addition to not requiring the inclusion of a
+new column into PEP's table, it also serves as a form of defence in depth protecting from researchers reading these random identifiers due to a configuration error on the access
 administrator's side. In fact, if that happened, researchers would be able to trivially correlate participants across different datasets: contrary to local pseudonyms
 \ref{pseudonyms}, this identifier does not change based upon the context and is instead fixed. Now we have a privacy-preserving link between a person and its row inside PEP's
-table.  
+table. \par
+The reader may ask why prepending the string \enquote*{participant:} to a random identifier, as this solution would still work by using just the random part. The reason is that
+this approach requires creating a new user, a special group containing only a specific participant and then give the new user access to this newly created group and to the columns
+inside PEP's table that contain the results of medical tests. As explained in section \ref{data_access}, this would require both a data administrator and an access administrator to
+be present during a participant's registration inside PEP. This can be inconvenient in practice. But, by prepending the string \enquote*{participant:} to a random identifier, a
+future version of PEP
+could detect that a participant is logging in, and automatically give the relative user the correct permissions without having to manually specify those for each study participant.
+The exact permissions that are granted to a user to let a study participant access his own data are listed alongside the relative pepcli commands in section \todo{add ref once I
+write it}.
 
 \section{Failed attempt}
 At the beginning of this work, I considered many possible solutions, that either turned out to not respect PEP's privacy standard or were deemed risky by the PEP team. Other
@@ -437,11 +445,11 @@ nicely integrates with the rest of PEP's architecture. Even though this attempt 
 presented later.\par
 
 \subsection{Design choices}
-As PEP already uses the SAML standard \cite{sstc-saml-core-errata-2.0-wd-07} for authentication, it would be natural to implement a SAML identity provider using YIVI \cite{irma-app}.
+As PEP already uses the SAML standard \cite{sstc-saml-core-errata-2.0-wd-07} for authentication, it would be natural to implement a SAML identity provider using Yivi \cite{irma-app}.
 Here is a BPMN diagram of the process that would be required to register a new study participant.
 
 \begin{figure}[H]
-	\includegraphics[scale=0.3]{registration_flow.png}
+	\includegraphics[scale=0.1]{registration_flow.png}
 	\caption{Failed attempt registration flow as a BPMN diagram}
 	\label{bpmn-registration-flow}
 \end{figure}
@@ -458,7 +466,7 @@ participants authentication. Some suggestions of where this can be applied will 
 A version 4 UUID is a 128 bits-long value, usually represented as a string of hyphen-separated hexadecimal values. 6 bits are set to predetermined values, this leaves 122 bits of
 randomness. But the goal of UUID is to have identifiers that do not collide, not to have unpredictable values. In fact, the specification says: \enquote*{Do not assume that UUIDs are 
 hard to guess; they should not be used as security capabilities (identifiers whose mere possession grants access), for example. A predictable random number source will exacerbate the
-situation.}. So the aforementioned 122 bits of entropy have to be considered only to evaluate the robustness against collisions. UUIDs should not be considered as a secret key, as
+situation}. So the aforementioned 122 bits of entropy have to be considered only to evaluate the robustness against collisions. UUIDs should not be considered as a secret key, as
 the standard doesn't guarantee that they are hard to predict. The security against an adversary finding out a valid UUID and trying to forge a credential is given by Yivi and has
 no correlation with properties of UUID other than their resistance to collisions.
 
@@ -587,21 +595,23 @@ $$P("Collision")=1-e^{-\lambda}=1-e^{-\frac{808800000000}{2^{122}}} \approx 1.52
 Both results are negligible. For comparison, the probability of dying in a given year due to an asteroid impact is estimated to be between $3.33 \times 10^{-8}$ and $5 \times
 10^{-7}$, depending on the type of impact \cite{death-by-asteroid}.
 
-\subsubsection{The Rust programming language and memory safety}\todo{This is my chance of making Erik Poll proud, don't miss it.}
-This solution requires to write some custom code, so we needed to choose a suitable programming language. In such a choice, there's always a subjective part, and for me , it was
-the curiosity of learning this new language. Subjective judgment aside, there are also good objective reasons to pick Rust. \par
+\subsubsection{The Rust programming language and memory safety}
+This solution requires writing some custom code, so we needed to choose a suitable programming language. In such a choice, there's always a subjective element and, for me, it was
+the curiosity of learning this recent language. Subjective judgment aside, there are also good objective reasons to pick Rust. \par
 PEP's codebase is written in C++, so we either need to use C++ itself or a language that nicely integrates with a C++ codebase. Additionally, PEP focuses on security, since it
-handles medical data. Rust aims at being a substitute for C and C++ while also offering strong memory safety guarantees. It is also designed to fit with pre-existing C and C++
-code. \par
+handles medical data. Rust aims at being a substitute for C and C++ while also offering strong safety guarantees, with a special focus on memory safety. It is also designed to fit
+with pre-existing C and C++ code. \par
 Memory safety is a property of some programming languages that perform memory management in such a way to prevent errors like segmentation fault and double free. A computer's
 available volatile memory is split into two parts: a stack and a heap. While most programming languages take care of automatically managing the data that lives on the stack,
-managing the heap memory is more complicated. Although storing data on the heap always needs to be done explicitly, freeing no-longer-needed memory can be approached in two
-different ways: either provide an automatic mechanism to free such memory, usually in the form of a garbage collector, or leave to the programmer the responsibility to free unused
-memory at the right time. The former approach is memory-safe, but it comes at a performance cost, while the latter can be very efficient but it is also error-prone. \par
-There are two types of memory safety: spatial and temporal. Spatial memory safety prevents attempts at accessing the wrong regions in memory. For example, segmentation faults and
+managing the heap memory is more complicated: when using the stack, data is always added on the top and removed from the top of the stack (first in first out policy); when using the heap instead, the data can
+be stored anywhere there is enough free space, and when the memory is not needed anymore it needs to be returned to the allocator. Although storing data on the heap always needs to
+be done explicitly (either by directly invoking an allocator or by calling a class' constructor), freeing no-longer-needed memory can be approached in two different ways: either provide an automatic mechanism to free such memory, usually in the form of a
+garbage collector, or leave to the programmer the responsibility to free unused memory at the right time. The former approach is memory-safe, but it comes at a performance cost,
+while the latter can be very efficient but it is also error-prone. \par
+There are two types of memory safety: spatial and temporal \cite{eternal-war-in-memory}. Spatial memory safety prevents attempts at accessing the wrong regions in memory. For example, segmentation faults and
 buffer overflows are violations of spatial memory safety: the former because it is the result of an attempt of accessing an invalid memory address, the latter because it is an
-attempt at writing to a memory region more data than what it can contain, resulting in a write past its boundary.\todo{find sources}. Temporal memory safety ensures that a program
-can only access valid data, and when a piece of data becomes invalid it is not accessible anymore. Examples of violations of temporary memory safety are double-free errors and
+attempt at writing to a memory region more data than what it can contain, resulting in a write past its boundary. Temporal memory safety ensures that a program
+can only access valid data, and when a piece of data becomes invalid it is not accessible anymore. Examples of violations of temporal memory safety are double-free errors and
 dangling pointers. A double-free error is when \enquote*{free()} is called twice on the same memory region. This corrupts the program's memory management structure and can cause
 the program to crash or to alter its execution flow \cite{double-free}. A dangling pointer is a pointer to a memory region that has been freed. Using such memory leads to undefined
 system behavior. \par
@@ -618,8 +628,9 @@ a value goes out of scope, thus it cannot be accessed anymore. Here are the main
 		\end{itemize}
 
 These rules are enforced by the borrow checker. It is a static analyzer inside the Rust compiler that makes sure no reference outlives the data it is pointing to. It also ensures
-that only one reference at a time is able to modify the underlining data. In Rust, a reference is a fat pointer \todo{add ref}, i.e. a pointer that, along with a memory address it
-is pointing to, it also carries additional information like the maximum amount of data that can be stored at that memory location and how much data is already stored there. 
+that only one reference at a time is able to modify the underlining data. In Rust, a reference is a fat pointer \cite{eternal-war-in-memory}, i.e. a pointer that, along with a memory address it
+is pointing to, it also carries additional information like the maximum amount of data that can be stored at that memory location and how much data is already stored there. This
+makes it possible to perform runtime checks to guarantee that read and write operations only happen within the bounds of the memory region referred by the pointer. 
 Every time a value is bound to a variable, that variable takes ownership of the underlying data, and when the owner, i.e. the variable, gets out of scope the relative memory is
 freed. Let's consider a simple example:
 
@@ -650,7 +661,8 @@ a pointer to a string stored on the heap. Since duplicating heap data can be exp
 \enquote*{string1} into \enquote*{string2}, without allocating a new string. But this could be a problem, as now we have two pointers to the same memory region, and trying to deallocate both at the end of the
 scope would result in a double-free bug. To prevent this issue, the statement \enquote*{let string2=string1} doesn't just copy the pointer data, but it also invalidates the
 variable \enquote*{string1}. Since \enquote*{string1} is no longer valid, when the program reaches the end of the scope only \enquote*{string2} is deallocated, and there is no
-double-free. What happened from an ownership perspective, is that \enquote*{string1} was the original owner of the string, then the string got moved inside \enquote*{string2} which
+double-free. What happened from an ownership perspective, is that \enquote*{string1} was the original owner of the string, then the string got \enquote*{moved}\footnote{Rust uses
+the verb \enquote*{to move} to indicate an assignment that results in an ownership change of the involved value} inside \enquote*{string2} which
 became the new owner. If we need two separate copies of the same heap data, we have to explicitly ask for it by invoking \enquote*{clone()}:
 
 \begin{lstlisting}[language=Rust, style=colouredRust]
@@ -659,7 +671,7 @@ became the new owner. If we need two separate copies of the same heap data, we h
 \end{lstlisting}
 
 In this case, we have two distinct copies of the string. \par
-Passing values to a function works analogously to assigning a variable's value to another variable: stack data is copied, while heap data is passed by reference. this means that, in
+Passing values to a function works analogously to assigning a variable's value to another variable: stack data is copied, while heap data is passed by reference. This means that, in
 the case of heap data, the function becomes the new owner\footnote{It also owns the stack data, but since this data gets duplicated in this case the original owner does not lose
 ownership of its copy.}. Consider the following example:
 
@@ -711,7 +723,7 @@ the fact that what we need from the function is just the boolean. This is where 
 valid for its whole lifetime. Using a reference, we can \textit{borrow} a value: we can access it but without taking ownership of the value. Just like variables, also references
 are immutable by default, if we need to be able to change a value we need to explicitly ask for a mutable reference using the \enquote*{mut} keyword. Here is the previous example,
 rewritten using mutable references:
-\todo{fix formatting of this listing}
+
 \begin{lstlisting}[language=Rust, style=colouredRust]
     fn main(){
        	let mut x=42;
@@ -727,7 +739,7 @@ rewritten using mutable references:
     }	
 \end{lstlisting}
 
-Note that, since we are using references to mutate variables, we need both to ask for mutable references and declare the variables as mutable. Otherwise the Rust compiler refuses
+Note that, since we are using references to mutate variables, we need both to ask for mutable references and declare the variables as mutable. Otherwise, the Rust compiler refuses
 to compile the code. To retain memory safety when using references, Rust's borrow checker analyzes the code to ensure the following two conditions are valid
 \cite{rust_ownership_rules}:
 
@@ -736,35 +748,134 @@ to compile the code. To retain memory safety when using references, Rust's borro
 		\item References must be valid for their whole lifetime.
 \end{enumerate}
 
-The rationale for the first condition is preventing data races, while the second condition prevents dangling pointers.
+The rationale for the first condition is preventing data races, while the second condition prevents dangling pointers. \par
+Using a memory-safe programming language does not guarantee to have bug-free code: this can only be guaranteed by formal verification. For example, a memory-safe language does not
+help with logic bugs, i.e. errors caused by a developer coding the wrong procedure to obtain a given result. But it eliminates many common programming
+mistakes that often lead to security vulnerabilities: according to the Microsoft Security Response Center, about 70\% of the security vulnerabilities in the Microsoft software
+ecosystem that got assigned a CVE ID \cite{cve_id} between 2006 and 2018 were due to memory corruption bugs \cite{proactive_approach_to_safety}. This shows how memory-safe programming 
+languages carry a great potential in helping develop secure software, and are therefore a natural choice when one of the main focus point of a software project is security. By
+using a memory-safe language, developers can significantly reduce the number of security vulnerabilities in their code and improve the overall security posture of their software. 
 
-\subsection{Implementation} \todo{talk about registration component}
+\subsection{Implementation}
 
-To implement this, I first stared by writing a registration component. This component is in charge of generating credentials for study participants and issuing the corresponding
-Yivi cards.  To implement this, I tried setting up SimpleSAMLphp \cite{simplesamlphp} to work as an YIVI \cite{about-irma} identity provider. SimpleSAMLphp can work both as a
-service provider and as an identity provider, and can be extended by writing PHP plugins. There were already two previous attempts about writing such a plugin:
-\enquote*{simplesamlphp-module-authirma} \cite{simplesamlphp-module-authirma} by the Privacy by Design Foundation \cite{privacybydesignfoundation} and \enquote*{irma-idp}
-\cite{irma-idp} by SURF \cite{surf}.  Both appear to be unmaintained, but I first attempted to use those as a basis for my own implementation. \par I started by setting up a local
-YIVI server inside a Docker container and creating a demo credential \cite{irma-docs-issuer} for PEP study participants, called \enquote{irma-demo.PEP.id}. I then tried making
-\enquote*{simplesamlphp-module-authirma} work again. It was developed at a time when the YIVI HTTP server and the YIVI JSON API server where two separate components. While trying
-to make it work again, I stumbled upon the problem of getting the keys for the API and web servers. Probably the key is the same for both, as now the irmago server
-\cite{irma-docs-server} implements both, but I was not able to find the certificate in the required format inside my Docker container. \par After failing to make
-\enquote*{simplesamlphp-module-authirma} work again, I did some more research on previous work and found out about \enquote{irma-idp}. It is more recent and, while it still appears
-to be unmaintained, at least uses the current architecture where irmago provides both the HTTP server and JSON API server components \cite{irma-docs-server}. But this project lacks
-configuration instructions and, again, I was not able to find the required certificate by trying the method reported in the repository's README \cite{irma-idp}. I asked for
-clarification in a GitHub issue, but to date I got no answer \cite{irma-idp-issue}. Additionally, looking at the code inside the repository it looked to either be incomplete or
-contain an error: the HTML code inside the \enquote*{disclose.html} file contains a \enquote*{Verify attribute} button that does not do anything, and there is no way to trigger the
-redirect specified inside the form. Likely the idea was to redirect the user upon clicking the aforementioned button, but in this case the code should have been written
-differently. \par Since \enquote*{simplesamlphp-module-authirma} is unmaintained and targeted an old YIVI server implementation, and \enquote*{irma-idp} appears to be abandoned in
-a non-working state and with lacking documentation, I decided to write my own SimpleSAMLphp plugin instead of adapting old projects to work with the new irmago implementation. This
-is because attempting to fix these old implementations could have entailed a significant rewrite of their code, so I decided to start afresh. I installed and configured
-SimpleSAMLphp \cite{simplesamlphp-docs} as a SAML identity provider \cite{sstc-saml-core-errata-2.0-wd-07} inside a Docker container, then I followed its documentation to write an
-authentication source talking with an YIVI server.  SimpleSAMLphp lets a developer write its own authentication flow. After authentication is completed, one has to pass to
-SimpleSAMLphp the relative attribute and it will take care of generating a SAML assertion and send it to the user. Internally, it implements a state machine going through the
-different authentication steps. If a redirect is necessary during the authentication flow, it is necessary to save the authentication state and then restore it after the redirect.
-Since I had to show the user a custom page containing a QR code to disclose its own YIVI credentials, I needed to save the state and perform a redirect. I could confirm the state
-was saved on a temporary file, but attempting to restore it failed. It was likely a configuration error, but asking SimpleSAMLphp's developers for help didn't turn anything. After
-trying to fix this issue for some time I abandoned this path.
+To implement this, there is the need to write a registration component that integrates with the current PEP participants registration flow. This component is in charge of
+generating credentials for study participants and issuing the corresponding Yivi cards. PEP already uses a web application as part of the registration procedure, so we opted for
+writing a web application in Rust. This application has three main components: a front-end in charge of rendering a simple interface and a back-end which is further divided into
+two components: one in charge of generating the attribute values and another handling the requests to the Yivi server. To build the front-end I used the Rocket web framework
+\cite{rocket}; while to generate UUIDs I used the uuid \cite{uuid_crate} library crate\footnote{In Rust's terminology, a crate indicates a project and can be of two different kinds:
+a library crate is a project that compiles to a library, while a binary crate is a project that compiles to an executable.}. Aiming to minimize the dependencies, the code uses the
+operating system's random number generator to generate version 4 UUIDs. To handle communication with the Yivi server I used the irma\footnote{IRMA was the former name of the Yivi
+project. At the time of writing, this library has not been renamed to Yivi yet.} library crate \cite{irma_crate}, and to generate the QR-code containing the Yivi card generated by
+the Yivi server I used the qrcode library crate \cite{qrcode_crate}. For an exhaustive list of all the dependencies, see \cite{registration_poc_cargo_toml}.  The credential
+generation flow is as follows. When the application starts, it exposes an HTTP endpoint and waits for connections. Upon receiving a connection, it generates a string made by
+prepending the string \enquote*{participant:} to a version 4 UUID. Then it contacts a local Yivi server listening on port 8088, and asks it to generate a new Yivi card for the
+attribute \enquote*{irma-demo.PEP.id} with the generated string as the attribute's value. If the Yivi server answers with the requested attribute, the application generates a
+QR-code that the study participant scans to import the newly generated credential in their Yivi wallet.\footnote{Yivi calls \enquote*{wallet} its credential store} It also shows the attribute's value, so that PEP can
+be configured to link the credential to the right user\footnote{The configuration details are not provided in this section, as this attempt failed. But it would have been analogous
+to the configuration presented in}\todo{add ref inside footnote once I write (and explain) the config}. Here is a BPMN diagram showing the flow:
+
+\begin{figure}[H]
+		\includegraphics[scale=0.1]{credential issuing.png}
+		\caption{Flow to issue a new Yivi credential for a study participant. The piece implemented as part of this work is highlighted in orange.}
+\end{figure}
+
+To let a study participant log-in with the Yivi credential in his possession via SAML, we need a SAML identity provider supporting Yivi. To implement this, I tried setting up
+SimpleSAMLphp \cite{simplesamlphp} to work as an Yivi \cite{about-irma} identity provider. SimpleSAMLphp can work both as a service provider and as an identity provider, and can be
+extended by writing PHP plugins. There were already two previous attempts about writing such a plugin: \enquote*{simplesamlphp-module-authirma} \cite{simplesamlphp-module-authirma}
+by the Privacy by Design Foundation \cite{privacybydesignfoundation} and \enquote*{irma-idp} \cite{irma-idp} by SURF \cite{surf}.  Both appear to be unmaintained, but I first
+attempted to use those as a basis for my own implementation. \par I started by setting up a local Yivi server inside a Docker container and creating a demo credential
+\cite{irma-docs-issuer} for PEP study participants, called \enquote{irma-demo.PEP.id}. I then tried making \enquote*{simplesamlphp-module-authirma} work again. It was developed at
+a time when the Yivi HTTP server and the Yivi JSON API server where two separate components. While trying to make it work again, I stumbled upon the problem of getting the keys for
+the API and web servers. Probably the key is the same for both, as now the irmago server \cite{irma-docs-server} implements both, but I was not able to find the certificate in the
+required format inside my Docker container. \par After failing to make \enquote*{simplesamlphp-module-authirma} work again, I did some more research on previous work and found out
+about \enquote{irma-idp}. It is more recent and, while it still appears to be unmaintained, at least uses the current architecture where irmago provides both the HTTP server and
+JSON API server components \cite{irma-docs-server}. But this project lacks configuration instructions and, again, I was not able to find the required certificate by trying the
+method reported in the repository's README \cite{irma-idp}. I asked for clarification in a GitHub issue, but to date I got no answer \cite{irma-idp-issue}. Additionally, looking at
+the code inside the repository it looked to either be incomplete or contain an error: the HTML code inside the \enquote*{disclose.html} file contains a \enquote*{Verify attribute}
+button that does not do anything, and there is no way to trigger the redirect specified inside the form.\todo{Should I include the relevant code snippet?} Likely the idea was to
+redirect the user upon clicking the aforementioned button, but in this case the code should have been written differently. 
+\par
+Since \enquote*{simplesamlphp-module-authirma} is unmaintained and targeted an old Yivi server implementation, and \enquote*{irma-idp} appears to be abandoned in a non-working
+state and with lacking documentation, I decided to write my own SimpleSAMLphp plugin instead of adapting old projects to work with the new irmago implementation. This is because
+attempting to fix these old implementations could have entailed a significant rewrite of their code, to the point of potentially nullifying the advantage of partially reusing their
+code. So I decided to start afresh. I installed and configured SimpleSAMLphp \cite{simplesamlphp-docs} as a SAML identity provider \cite{sstc-saml-core-errata-2.0-wd-07} inside a
+Docker container, then I followed its documentation to write an authentication source talking with an Yivi server. SimpleSAMLphp lets a developer write its own authentication
+flow. After authentication is completed, one has to pass to SimpleSAMLphp the relative attribute and it will take care of generating a SAML assertion and send it to the user.
+Internally, it implements a state machine going through the different authentication steps. If a redirect is necessary during the authentication flow, it is necessary to save the
+authentication state and then restore it after the redirect.  Since I had to show the user a custom page containing a QR code to disclose its own Yivi credentials, I needed to save
+the state and perform a redirect. I could confirm the state was saved on a temporary file, but attempting to restore it failed. It was likely a configuration error, but asking
+SimpleSAMLphp's developers for help didn't turn anything. After trying to fix this issue for some time I abandoned this path.
+
+
+\chapter{The implemented solution}
+This chapter describes the solution implemented in the final proof of concept. In the previous episode, we left out hero trying to make SimpleSAMLphp work, to no avail. How to make
+the previously presented idea work, but without a SAML identity provider? Here's the catch: PEP doesn't directly interact with the IdP!!! There's an Apache server running Shibbolet
+Service Provider 
+in-between PEP and the SAML IdP, then Shibbolet forwards the verified attribute to PEP. Here's the idea: write a middleware that works alongside Shibbolet; the user discloses its
+own attribute to this component, which in turn sends the disclosed attribute to PEP's authentication server. From PEP's perspective, there is no difference between Shibbolet and
+this middleware.  
+
+\subsection{The Shibboleth Service Provider: An Overview}\todo{This is an AI draft, fix it}
+The Shibboleth Service Provider is a software component that provides authentication and authorization services for web applications. It is used to enable single 
+sign-on (SSO) between different systems, allowing users to access multiple applications without having to log in repeatedly.
+
+The Shibboleth Service Provider acts as an intermediary between the application and the authentication system, such as an LDAP server or a database. When a user 
+attempts to access a protected resource, the application sends a request to the Shibboleth Service Provider, which in turn forwards the request to the 
+authentication system. The authentication system then verifies the user's identity and returns an authentication response to the Shibboleth Service Provider.
+
+The Shibboleth Service Provider then uses this authentication response to grant or deny access to the requested resource, based on the user's identity and any 
+authorization rules that are in place. The application then receives the authentication response from the Shibboleth Service Provider and can either grant or deny
+access to the user based on the response.
+
+Shibboleth is an open-source implementation of the SAML protocol, which provides a standardized way for web applications to manage authentication. It is widely used in enterprise environments to enable SSO between different systems and applications, and is particularly useful in situations 
+where multiple authentication systems need to be integrated.
+
+
+
+
+
+
+The Shibboleth Service Provider: An Overview
+
+The Shibboleth Service Provider (SP) constitutes a pivotal component within an organization’s identity management infrastructure. Its role is multifaceted, encompassing secure authentication, authorization, and privacy preservation. Below, we delve into the key aspects of the SP, elucidating its purpose, features, use cases, and technical intricacies.
+1. Purpose and Function
+
+The SP operates in conjunction with a diverse array of web applications. Its primary objectives include:
+
+    Privacy Emphasis: The SP diligently safeguards user information during authentication and authorization processes, ensuring compliance with privacy regulations.
+    Authorization Capabilities: Organizations leverage the SP to enforce access control policies, thereby determining which users can access specific resources.
+    Integration: Seamlessly integrating with web servers, the SP facilitates secure communication between users and applications.
+
+2. Features
+
+The following features characterize the Shibboleth Service Provider:
+
+    Privacy-Centric Design: The SP prioritizes user privacy, employing cryptographic techniques to protect sensitive data.
+    Fine-Grained Authorization: Organizations configure access rules based on user attributes, roles, and contextual information.
+    Automated Identity Provider (IdP) Management: The SP streamlines interactions with various IdPs, enabling federated authentication.
+    Platform Agnostic: The SP is adaptable, supporting diverse platforms such as Windows, macOS, and Linux.
+
+3. Use Cases
+
+Organizations deploy the SP for several purposes:
+
+    Resource Protection: The SP safeguards web applications and services, preventing unauthorized access.
+    Single Sign-On (SSO): Users benefit from seamless access to multiple applications using a single set of credentials.
+    Secure Communication: By mediating between users and applications, the SP ensures confidentiality and integrity.
+
+4. Technical Details
+
+The SP’s technical underpinnings include:
+
+    Authentication Flow: The SP handles authentication requests, validating user identities against configured IdPs.
+    Metadata Exchange: It dynamically retrieves and processes metadata from IdPs, simplifying federation setup.
+    Customization: Organizations tailor the SP to their specific requirements, adjusting parameters and behavior.
+
+In summary, the Shibboleth Service Provider plays a pivotal role in establishing secure and efficient identity management within organizations. Its integration with web servers, emphasis on privacy, and fine-grained authorization capabilities contribute to a robust authentication and authorization framework.
+
+
+\subsection{The registration component}
+
 
 \iffalse
 
@@ -773,7 +884,7 @@ Everybody wants web apps! So let's give them what they want. After failing with 
 
 
 \subsection{Some initial ideas}
-The first idea to let users download their data from PEP was to use YIVI to disclose the data needed to generate the pseudonym to some component that then proceeds to generate it.
+The first idea to let users download their data from PEP was to use Yivi to disclose the data needed to generate the pseudonym to some component that then proceeds to generate it.
 This doesn't work because the pseudonym is generated by encrypting a random string. But this string gets stored inside Salesforce, so the next idea was to interface with
 Salesforce. This could have posed some issues though:
 \begin{enumerate}
@@ -783,14 +894,14 @@ Salesforce. This could have posed some issues though:
 Let's analyze these issues. If the seed is stored alongside personal data, then getting it from Salesforce could expose personal identifiable information. How? One could argue that
 they shouldn't store anything inside Salesforce anyway... But it is done to be able to de-anonymize users in special circumstances. And here we get to the point: better not touch
 Salesforce, unless those special circumstances arise. The second issue is about API access. Salesforce does have it, but only for certain editions \cite{salesforce}. The PEP team
-blackballed the idea of accessing Salesforce. The next proposal was to give participants their own ID (main pseudonym) during the enrollment procedure as an YIVI credential, but
+blackballed the idea of accessing Salesforce. The next proposal was to give participants their own ID (main pseudonym) during the enrollment procedure as an Yivi credential, but
 providing them with this ID could disclose more information than necessary.
 Since this first idea was discarded, I considered the following approaches:
 \begin{enumerate}
 		\item Give participants their own ID during enrollment phase.
 		\item Give participants a re-shuffled ID.
 		\item Create a fake study in which the participant has the researcher role.
-		\item Use YIVI’s chained session: it is possible to derive a card from other cards the user already has by having the user disclose he attributes contained there. The server can then apply some function on the attributes and derive a new card from that.
+		\item Use Yivi’s chained session: it is possible to derive a card from other cards the user already has by having the user disclose he attributes contained there. The server can then apply some function on the attributes and derive a new card from that.
 \end{enumerate}
 
 The first approach could pose unnecessary risks. The participant's pseudonym is used to obtain the re-shuffled pseudnyms that identify the participant in different studies and in
@@ -802,7 +913,7 @@ In a similar fashion to the previous approach, it would be possible to create a 
 the researcher role inside their own fake study to be able to access their own data. Also this option would require to provide them with some key material, opening the door to keym
 management issues [again, is this actually needed? See also previous note]. \par
 The last approach is a way to sidestep the issue of providing study participants with their own pseudonym or a re-shuffled pseudonym. But it would require some way of linking the
-YIVI identity to the participant.\par
+Yivi identity to the participant.\par
 
 \subsection{The chosen solution}
 PEP uses rbac, let's use that too! First, create a column group containing all the columns pertaining to exam results. Then, for each participant, create a new participant group
