@@ -462,7 +462,7 @@ a version 4 UUID as described in RFC 4122 \cite{uuid_rfc}. The reason for prepen
 a study participant. This can be used in the future to automatize or simplify some aspects of this login solution in the future by writing some logic specific for the case of
 participants authentication. Some suggestions of where this can be applied will be presented where relevant.
 
-\subsubsection{Version 4 UUID}
+\subsubsection{Version 4 UUID}\label{uuid_collision_discussion}
 A version 4 UUID is a 128 bits-long value, usually represented as a string of hyphen-separated hexadecimal values. 6 bits are set to predetermined values, this leaves 122 bits of
 randomness. But the goal of UUID is to have identifiers that do not collide, not to have unpredictable values. In fact, the specification says: \enquote*{Do not assume that UUIDs are 
 hard to guess; they should not be used as security capabilities (identifiers whose mere possession grants access), for example. A predictable random number source will exacerbate the
@@ -780,7 +780,7 @@ using a memory-safe language, developers can significantly reduce the number of 
 
 
 \subsection{Implementation}\label{failed_implementation}
-
+\subsubsection{Registration component}\label{registration-component}
 To implement this, there is the need to write a registration component that integrates with the current PEP participants registration flow. This component is in charge of
 generating credentials for study participants and issuing the corresponding Yivi cards. PEP already uses a web application as part of the registration procedure, so we opted for
 writing a web application in Rust. This application has three main components: a front-end in charge of rendering a simple interface and a back-end which is further divided into
@@ -802,6 +802,15 @@ to the configuration presented in}\todo{add ref inside footnote once I write (an
 		\caption{Flow to issue a new Yivi credential for a study participant. The piece implemented as part of this work is highlighted in orange.}
 \end{figure}
 
+\subsubsection{Security evaluation}
+Since this component is executed as part of the participants registration procedures by PEP administrators, it is run in a trusted environment. The participant is present during
+the registration procedure, so there is no concrete risk of assigning the generated credential to the wrong person. Here the main security risk is represented by the uuid library crate
+\cite{uuid_crate}: we need that the generated UUIDs do not collide. If there is a bug in this library that results in generating the same UUID more than once, it would cause having
+multiple participants with the same credential, so they would get access to the same data. In other words, if two participants get the same credential, one of them would get access
+to the data of the other instead of his own. So the security of this component relies on this library being a correct implementation of the UUID version 4 standard \cite{uuid_rfc}.
+Assuming the library is a compliant implementation of the standard, the discussion in section \ref{uuid_collision_discussion} shows that we can expect that we will not get colliding UUIDs.
+
+\subsubsection{SAML identity provider}
 To let a study participant log-in with the Yivi credential in his possession via SAML, we need a SAML identity provider supporting Yivi. To implement this, I tried setting up
 SimpleSAMLphp \cite{simplesamlphp} to work as an Yivi \cite{about-irma} identity provider. SimpleSAMLphp can work both as a service provider and as an identity provider, and can be
 extended by writing PHP plugins. There were already two previous attempts about writing such a plugin: \enquote*{simplesamlphp-module-authirma} \cite{simplesamlphp-module-authirma}
@@ -831,13 +840,18 @@ SimpleSAMLphp's developers for help didn't turn anything. After trying to fix th
 
 
 \chapter{The implemented solution}
-This chapter describes the solution implemented in the final proof of concept. In the previous episode, we left out hero trying to make SimpleSAMLphp work, to no avail. How to make
-the previously presented idea work, but without a SAML identity provider? Here's the catch: PEP doesn't directly interact with the IdP!!! There's an Apache server running
-Shibboleth Service Provider in-between PEP and the SAML IdP, then Shibboleth forwards the verified attribute to PEP. Here's the idea: write a middleware that works alongside
-Shibboleth; the user discloses its own attribute to this component, which in turn sends the disclosed attribute to PEP's authentication server. From PEP's perspective, there is no
-difference between Shibboleth and this middleware.  
+This chapter describes the solution implemented in the final proof of concept. The solution described in \ref{failed_implementation} did not work due issues with getting existing
+SAML IdPs work with Yivi. While it would be possible to write a new IdP from scratch supporting authentication via Yivi credentials, it would require a significant effort.
+Additionally, its maintenance would be an additional burden for the PEP team. How to make the previously presented idea work, but without a SAML identity provider? \par
+After discussing possible solutions with the PEP team, a new possibility surfaced. PEP does not interact directly with the IdP, there is an Apache server running the Shibboleth Service
+Provider in-between PEP and the SAML IdP. Shibboleth redirects the user to SURFConext's IdP and, if the authentication is successful, forwards the verified attribute to PEP. So
+here is a possible solution: write a middleware that works alongside Shibboleth; the user discloses its own attribute to this component, which in turn sends the disclosed attribute
+to PEP's authentication server. From PEP's perspective, there is no difference between Shibboleth and this middleware. \par
+Compared to writing a SAML IdP supporting Yivi, this solution is much simpler, as it does not require to implement the SAML specification: once the required credential is verified
+by an Yivi server, this component just forwards the disclosed attribute value (the identifier described in \todo{add ref}) to PEP's authentication server via an HTTP request. By
+being a simple and small component, its maintenance adds only a little work to the PEP team's duties. 
 
-\subsection{The Shibboleth Service Provider: An Overview}
+\section{The Shibboleth Service Provider: An Overview}
 
 Shibboleth is an open-source implementation of the SAML protocol, which provides a standardized way for networked software to manage authentication. It is widely used in enterprise
 environments to enable single sign-on (SSO) between different systems and applications, and is particularly useful in situations where multiple authentication systems need to be
@@ -904,33 +918,74 @@ The SP’s technical underpinnings include:
 In summary, the Shibboleth Service Provider plays a pivotal role in establishing secure and efficient identity management within organizations. Its integration with web servers, emphasis on privacy, and fine-grained authorization capabilities contribute to a robust authentication and authorization framework.
 \fi
 
-\subsection{The registration component}
+\section{The registration component}
 The registration component described in section \ref{failed_implementation} can be reused also for this solution, as its inner working does not depend on the other components. So I
 reused it as-is.
 
-\subsection{The middleware}
-It is a web application exposing HTTP endpoints. It exposes the following three endpoints:
+\section{The middleware}
+This is the component in charge of authenticating the study participants. It integrates with the existing PEP infrastructure, without requiring modifications. This middleware is a web 
+application exposing the following three HTTP endpoints:
 
 \begin{itemize}
-	\item qr - starts an Yivi session to disclose the user's PEP ID and returns a QR code to perform the session
-	\item status - returns the status of an Yivi session
-	\item token - returns PEP's authentication token for an Yivi session, if the attributes were disclosed successfully
+	\item qr - starts an Yivi session to disclose the user's credential and returns a QR code to perform the session.
+	\item status - returns the status of an Yivi session.
+	\item token - returns PEP's authentication token for an Yivi session, if the attributes were disclosed successfully.
 \end{itemize}
 
+Internally, the application is divided into three components: the application's entrypoint, which also contains the definition of the HTTP endpoints, a class that handles the
+message exchanges with the Yivi server and a class that communicates with PEP's authentication server over HTTPS. \par
+Here is how the login flow looks like when using this custom middleware for authentication. First, some application sends an empty GET request to the \enquote*{qr} endpoint. The
+middleware contacts an Yivi server and asks it to generate a disclosure request for the attribute \enquote{irma-demo.PEP.id}. If the server answers
+correctly, it then encodes the server answer's data into a JSON string and sends it as its own answer to the requester. Note that this answer contains an Yivi session pointer, i.e.
+an unique identifier for the Yivi session just initiated. The requester encodes the data into a QR code that is shown to the user, so that the user can use its own Yivi app to
+perform an Yivi session. In the meantime, the requester uses the session pointer to poll the \enquote*{status} endpoint. When the middleware receives a GET request for the
+\enquote*{status} endpoint containing an Yivi session pointer, it uses this session pointer to query the Yivi server for the status of the pointed session and reports the answer
+back to the requester. This is needed so that the requester knows when a session is concluded and so the result is available. Once the Yivi session is done, the requester contacts
+the \enquote*{token} endpoint with a GET request containing the session pointer. Now, the middleware contacts the Yivi server using the given session pointer. If the Yivi session
+was successful, it will obtain the value for the disclosed attribute and send it to PEP's authentication server to obtain an authentication token. Finally, it will forward this
+authentication token to the requester as a JSON string.
 
-
-\subsubsection{Security evaluation}
+\subsection{Security evaluation}
 This is the core component of the solution and is security-critical, as it is in charge of authenticating the study participants.  Due to its criticality, I employed a number of
-precautions to reduce the likelihood of mistakes. It is written in Rust \ref{rust_memory_safety} using the Rocket web framework \cite{rocket}.  The code is minimal and the
-application is stateless. This makes it easier to reason about the application's security: since it is stateless, it is possible to consider the security of each endpoint in
-isolation from the others: the application's behavior does not depend upon the order in which the endpoints are contacted. If this was not the case, one would have to consider each
-possible combination in contacting the endpoints. Where possible, I used established libraries instead of writing my own code.
+precautions to reduce the likelihood of mistakes. It is written in Rust \ref{rust_memory_safety} using the Rocket web framework \cite{rocket}.  The code is minimal: even when
+counting blank lines and comments, the total line count amounts at 537 lines spread over three files, making it possible to thoroughly audit the code in a limited amount of time. It
+also uses Rust's object-oriented encapsulation features, so that the security and correctness of each component can be evaluated in isolation from the others. Additionally, the
+application is stateless. This makes it easier to reason about the whole application's security: since it is stateless, it is possible to consider the security of each endpoint in
+isolation from the others; the application's behavior does not depend upon the order in which the endpoints are contacted. If this was not the case, one would have to consider each
+possible order in contacting the endpoints. Where possible, I used established libraries instead of writing my own code. \par
+There is an important detail to note about TLS support: the Rocket web framework features a TLS implementation, but my proof of concept does not protect the endpoint's traffic by
+default. This means that someone sniffing an user's connection could steal this person's PEP authentication token. So, before deploying this component to a production environment,
+one needs to either configure Rocket to use its own native TLS support as explained in \cite{rocket_guide_tls}, or to put it behind a reverse-proxy configured for TLS-termination.
+\par
+Here I will provide a security argument expressing that, in the absence of bugs, authentication via this component is as secure as the Yivi server the component communicates with
+during the login flow. \par
+Let's start by considering the \enquote*{qr} endpoint. When a software contacts this endpoint, all the middleware does is contacting the Yivi server on its
+behalf and relying the Yivi server's answer. As in this case the middleware just acts as an intermediary without any further elaboration other than encoding the server's answer as
+a JSON string, an attacker using this endpoint cannot obtain anything more than what could be obtained by directly contacting the Yivi server. \par
+Let's now analyze the \enquote*{status} endpoint. Again, this endpoint just acts as an intermediary between some piece of software and the Yivi server: it gets as input an Yivi
+session pointer, uses it to query the Yivi server for the related session's status and relies the answer back. An attacker could try to use this endpoint to get the status of
+someone else's session. But to do this, he would need to guess the related session pointer, and it is Yivi's responsibility to generate unguessable session pointers. In the
+hypothetical case that Yivi generates guessable session pointers, an attacker could obtain the session status by querying the Yivi server directly, and this endpoint would not
+provide any additional information. Providing an invalid session pointer would just result in an error. \par
+Finally, let's evaluate the \enquote*{token} endpoint. This is the only endpoint that is not just an intermediary between some other software and the Yivi server, as it also
+contacts PEP's authentication server. It uses the given session pointer to get the attribute's value from the Yivi server, rely it to PEP's authentication server to obtain an
+authentication token and sends this token back to the original requester. As the attribute's value is retrieved from Yivi and sent without any further elaboration to PEP's
+authentication server, it is Yivi's responsibility to guarantee the validity of the attribute's value. An attacker could try to use this endpoint to obtain someone else's
+authentication token. But, as in the case of the \enquote*{status} endpoint, to accomplish this the attacker needs to guess the correct Yivi session pointer. In this case, being
+able to guess the session pointer would let an attacker to obtain more than what would be obtained from the Yivi server alone, namely PEP's authentication token. But also in this
+case, it is Yivi's responsibility to provide unguessable session pointers. \par
+Concluding, let's also briefly consider what could happen if the endpoints are not queried in the expected order. The \enquote*{qr} endpoint can be queried successfully at any
+time, as it doesn't require to provide any information. But querying it just results in the opening of a new Yivi session on the Yivi server. This does not pose any security
+issue. Querying the other two endpoints before the \enquote*{qr} means querying them without knowing a valid Yivi session pointer, but passing an invalid session pointer just
+results in an error. 
 
 
+\section{PEP Participant Login Portal (PEP PLP)}
+This is the component that the study participants interact directly with to access their data inside PEP. Initially, the idea was to implement this as a web application, as in
+recent times most computer users got used to web applications. Additionally, this would make it easier to have cross-platform support, as it would be on the browser to account for
+OS and architectural differences. As with the other components, I used the Rocket web framework \cite{rocket} to implement this.  
 
-\subsection{The client}
-
-\subsubsection{Security evaluation}
+\subsection{Security evaluation}
 
 \iffalse
 
