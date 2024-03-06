@@ -1,7 +1,7 @@
 \documentclass{report}
 
 \usepackage[utf8]{inputenc}
-\usepackage{biblatex}
+\usepackage[backend=biber]{biblatex}
 \usepackage{dsfont}
 \usepackage{mathtools}
 \usepackage[colorinlistoftodos]{todonotes}
@@ -327,7 +327,7 @@ In the second scenario, a program requests an authentication token for the user 
 standard \cite{sstc-saml-core-errata-2.0-wd-07} and SURFconext \cite{surfconext} as an identity provider. Once the user's identity is established, its access rights are determined by 
 looking up a user list to determine the user's membership of any access group. 
 
-\subsubsection{SAML}
+\subsubsection{SAML}\label{saml}
 Security Assertion Markup Language (SAML) is a security standard used to authenticate users and supporting Single Sign On (SSO) \cite{sstc-saml-core-errata-2.0-wd-07}. It defines
 the syntax and semantics for XML-encoded assertions regarding authentication, attributes, and authorization of a subject (an entity that is usually a user, but could in principle
 be a software component, a device or an entire organization) to other entities. It also defines protocols to exchange this information. SAML supports a number of usage scenarios, those 
@@ -595,7 +595,29 @@ $$P("Collision")=1-e^{-\lambda}=1-e^{-\frac{808800000000}{2^{122}}} \approx 1.52
 Both results are negligible. For comparison, the probability of dying in a given year due to an asteroid impact is estimated to be between $3.33 \times 10^{-8}$ and $5 \times
 10^{-7}$, depending on the type of impact \cite{death-by-asteroid}.
 
-\subsubsection{The Rust programming language and memory safety}
+\subsubsection{Yivi} \label{yivi}
+Yivi is a project maintained by the Privacy by Design Foundation \cite{privacybydesignfoundation} implementing the Idemix anonymous credential system \cite{idemix_specification}. It
+lets an \textit{issuer} issue a credential that can subsequently be verified by a \textit{verifier}. The idea behind this system is that a service may need to know some
+information about a person before offering this person a service, without the need to know other information, related but not relevant, that is usually provided with traditional
+identification methods. E.g. a shop needs to verify that a person is over 18 years old before selling an alcoholic beverage to that person, but it doesn't need to know the exact age of
+that person, his name and all the other information that is typically present on traditional identity documents. Yivi provides a way to disclose only a specific piece of
+information (in this case that a person is over 18), called an \textit{attribute}, without leaking any additional information \cite{irma-docs}. \par
+Summarized, it works by having a trusted third party act as an issuer. This party is in charge of verifying that a person has a certain characteristic (i.e. being over 18 or being
+a student) and then issuing the relative Yivi attribute to that person. Later, a verifier can contact an Yivi server to have it generate a disclosure request. The user reads this
+request using his Yivi app and, if he agrees to disclose the requested attribute, the Yivi server validates the corresponding credential and lets the verifier know the value of the
+requested attribute. More details can be found in Yivi's documentation \cite{irma-docs}. \par
+Using Yivi has the advantages of offloading the actual authentication to a solid and privacy-preserving project, while providing at the same time a simple user experience: when
+authenticating via Yivi, a user has just to scan a QR-code with the Yivi app and confirm his will to disclose the requested attribute. \par
+The Yivi server periodically retrieves a list of valid attribute types from a centralized repository. Similarly, the Yivi app does not accept to store attributes not present in such
+centralized repository. To have one's credential added to this repository, one needs to create a pull request on a GitHub repository and pay the Privacy by Design Foundation a
+yearly fee \cite{irma-docs-issuer}. An alternative is to use demo credentials. It is possible to host an Yivi server with a locally-modified copy of the demo credentials
+repository. These are credentials that only work for testing purposes and do not work on production systems. As an additional safety measure, the Yivi app does not work with such
+credentials unless developer mode is activated and one compiles his own version of the app with such credentials added to the local demo repository used while compiling the app. \par 
+To implement my proof of concept, I set up a local Yivi server with a demo credential called \enquote*{irma-demo.PEP.id} and I compiled my own version of the Yivi app with
+this credential baked-in. This works for showing that my solution works, but if in the future the PEP team decides to use this or a similar one in production, there is the need to
+contact the Privacy by Design Foundation to register a production credential.
+
+\subsubsection{The Rust programming language and memory safety} \label{rust_memory_safety}
 This solution requires writing some custom code, so we needed to choose a suitable programming language. In such a choice, there's always a subjective element and, for me, it was
 the curiosity of learning this recent language. Subjective judgment aside, there are also good objective reasons to pick Rust. \par
 PEP's codebase is written in C++, so we either need to use C++ itself or a language that nicely integrates with a C++ codebase. Additionally, PEP focuses on security, since it
@@ -756,7 +778,8 @@ ecosystem that got assigned a CVE ID \cite{cve_id} between 2006 and 2018 were du
 languages carry a great potential in helping develop secure software, and are therefore a natural choice when one of the main focus point of a software project is security. By
 using a memory-safe language, developers can significantly reduce the number of security vulnerabilities in their code and improve the overall security posture of their software. 
 
-\subsection{Implementation}
+
+\subsection{Implementation}\label{failed_implementation}
 
 To implement this, there is the need to write a registration component that integrates with the current PEP participants registration flow. This component is in charge of
 generating credentials for study participants and issuing the corresponding Yivi cards. PEP already uses a web application as part of the registration procedure, so we opted for
@@ -766,7 +789,7 @@ two components: one in charge of generating the attribute values and another han
 a library crate is a project that compiles to a library, while a binary crate is a project that compiles to an executable.}. Aiming to minimize the dependencies, the code uses the
 operating system's random number generator to generate version 4 UUIDs. To handle communication with the Yivi server I used the irma\footnote{IRMA was the former name of the Yivi
 project. At the time of writing, this library has not been renamed to Yivi yet.} library crate \cite{irma_crate}, and to generate the QR-code containing the Yivi card generated by
-the Yivi server I used the qrcode library crate \cite{qrcode_crate}. For an exhaustive list of all the dependencies, see \cite{registration_poc_cargo_toml}.  The credential
+the Yivi server I used the qrcode library crate \cite{qrcode_crate}. For an exhaustive list of all the dependencies, see \cite{registration_poc_cargo_toml}. The credential
 generation flow is as follows. When the application starts, it exposes an HTTP endpoint and waits for connections. Upon receiving a connection, it generates a string made by
 prepending the string \enquote*{participant:} to a version 4 UUID. Then it contacts a local Yivi server listening on port 8088, and asks it to generate a new Yivi card for the
 attribute \enquote*{irma-demo.PEP.id} with the generated string as the attribute's value. If the Yivi server answers with the requested attribute, the application generates a
@@ -809,32 +832,39 @@ SimpleSAMLphp's developers for help didn't turn anything. After trying to fix th
 
 \chapter{The implemented solution}
 This chapter describes the solution implemented in the final proof of concept. In the previous episode, we left out hero trying to make SimpleSAMLphp work, to no avail. How to make
-the previously presented idea work, but without a SAML identity provider? Here's the catch: PEP doesn't directly interact with the IdP!!! There's an Apache server running Shibbolet
-Service Provider 
-in-between PEP and the SAML IdP, then Shibbolet forwards the verified attribute to PEP. Here's the idea: write a middleware that works alongside Shibbolet; the user discloses its
-own attribute to this component, which in turn sends the disclosed attribute to PEP's authentication server. From PEP's perspective, there is no difference between Shibbolet and
-this middleware.  
+the previously presented idea work, but without a SAML identity provider? Here's the catch: PEP doesn't directly interact with the IdP!!! There's an Apache server running
+Shibboleth Service Provider in-between PEP and the SAML IdP, then Shibboleth forwards the verified attribute to PEP. Here's the idea: write a middleware that works alongside
+Shibboleth; the user discloses its own attribute to this component, which in turn sends the disclosed attribute to PEP's authentication server. From PEP's perspective, there is no
+difference between Shibboleth and this middleware.  
 
-\subsection{The Shibboleth Service Provider: An Overview}\todo{This is an AI draft, fix it}
-The Shibboleth Service Provider is a software component that provides authentication and authorization services for web applications. It is used to enable single 
-sign-on (SSO) between different systems, allowing users to access multiple applications without having to log in repeatedly.
+\subsection{The Shibboleth Service Provider: An Overview}
 
-The Shibboleth Service Provider acts as an intermediary between the application and the authentication system, such as an LDAP server or a database. When a user 
-attempts to access a protected resource, the application sends a request to the Shibboleth Service Provider, which in turn forwards the request to the 
-authentication system. The authentication system then verifies the user's identity and returns an authentication response to the Shibboleth Service Provider.
+Shibboleth is an open-source implementation of the SAML protocol, which provides a standardized way for networked software to manage authentication. It is widely used in enterprise
+environments to enable single sign-on (SSO) between different systems and applications, and is particularly useful in situations where multiple authentication systems need to be
+integrated. \par
+It acts as an intermediary between an application and the authentication system: when a user attempts to access a protected resource, the application sends a request to the
+Shibboleth Service Provider, which in turn forwards the request to the authentication system. The authentication system then verifies the user's identity and returns an
+authentication response to the Shibboleth Service Provider. Finally, the application receives the authentication response from the Shibboleth Service Provider and can either grant or 
+deny access to the user based on the response. \par
+In the specific case of PEP, the Shibboleth Service Provider is a component of PEP's authentication server \ref{pep_servers}. Here is how this flow works in this particular case.
+When a user initiates the login flow, the Shibboleth Service Provider redirects the user to SURFConext's SAML IdP (this is an SP-initiated login flow, see section \ref{saml}). The
+user then proceeds to authenticate himself to SURFConext and, if the authentication is successful, SURFConext's IdP gives the user a signed SAML assertion. The user's browser
+forwards this assertion to the Shibboleth Identity Provider which, after checking the assertion's validity, forwards the contained attribute to PEP's authentication server. Here is
+this flow represented as a BPMN diagram:
 
-The Shibboleth Service Provider then uses this authentication response to grant or deny access to the requested resource, based on the user's identity and any 
-authorization rules that are in place. The application then receives the authentication response from the Shibboleth Service Provider and can either grant or deny
-access to the user based on the response.
-
-Shibboleth is an open-source implementation of the SAML protocol, which provides a standardized way for web applications to manage authentication. It is widely used in enterprise environments to enable SSO between different systems and applications, and is particularly useful in situations 
-where multiple authentication systems need to be integrated.
-
+%see https://tex.stackexchange.com/questions/140157/centre-an-image-ignoring-margins to fix placement
+\begin{figure}[H]
+		\includegraphics[scale=0.08, angle=-90]{shibboleth_authentication_flow.png}
+		\caption{How Shibboleth integrates with the rest of PEP's authentication server to authenticate users.}
+\end{figure}
 
 
 
 
 
+
+
+\iffalse
 The Shibboleth Service Provider: An Overview
 
 The Shibboleth Service Provider (SP) constitutes a pivotal component within an organization’s identity management infrastructure. Its role is multifaceted, encompassing secure authentication, authorization, and privacy preservation. Below, we delve into the key aspects of the SP, elucidating its purpose, features, use cases, and technical intricacies.
@@ -872,10 +902,35 @@ The SP’s technical underpinnings include:
     Customization: Organizations tailor the SP to their specific requirements, adjusting parameters and behavior.
 
 In summary, the Shibboleth Service Provider plays a pivotal role in establishing secure and efficient identity management within organizations. Its integration with web servers, emphasis on privacy, and fine-grained authorization capabilities contribute to a robust authentication and authorization framework.
-
+\fi
 
 \subsection{The registration component}
+The registration component described in section \ref{failed_implementation} can be reused also for this solution, as its inner working does not depend on the other components. So I
+reused it as-is.
 
+\subsection{The middleware}
+It is a web application exposing HTTP endpoints. It exposes the following three endpoints:
+
+\begin{itemize}
+	\item qr - starts an Yivi session to disclose the user's PEP ID and returns a QR code to perform the session
+	\item status - returns the status of an Yivi session
+	\item token - returns PEP's authentication token for an Yivi session, if the attributes were disclosed successfully
+\end{itemize}
+
+
+
+\subsubsection{Security evaluation}
+This is the core component of the solution and is security-critical, as it is in charge of authenticating the study participants.  Due to its criticality, I employed a number of
+precautions to reduce the likelihood of mistakes. It is written in Rust \ref{rust_memory_safety} using the Rocket web framework \cite{rocket}.  The code is minimal and the
+application is stateless. This makes it easier to reason about the application's security: since it is stateless, it is possible to consider the security of each endpoint in
+isolation from the others: the application's behavior does not depend upon the order in which the endpoints are contacted. If this was not the case, one would have to consider each
+possible combination in contacting the endpoints. Where possible, I used established libraries instead of writing my own code.
+
+
+
+\subsection{The client}
+
+\subsubsection{Security evaluation}
 
 \iffalse
 
