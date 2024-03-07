@@ -922,7 +922,7 @@ In summary, the Shibboleth Service Provider plays a pivotal role in establishing
 The registration component described in section \ref{failed_implementation} can be reused also for this solution, as its inner working does not depend on the other components. So I
 reused it as-is.
 
-\section{The middleware}
+\section{The middleware}\label{middleware}
 This is the component in charge of authenticating the study participants. It integrates with the existing PEP infrastructure, without requiring modifications. This middleware is a web 
 application exposing the following three HTTP endpoints:
 
@@ -942,8 +942,8 @@ perform an Yivi session. In the meantime, the requester uses the session pointer
 \enquote*{status} endpoint containing an Yivi session pointer, it uses this session pointer to query the Yivi server for the status of the pointed session and reports the answer
 back to the requester. This is needed so that the requester knows when a session is concluded and so the result is available. Once the Yivi session is done, the requester contacts
 the \enquote*{token} endpoint with a GET request containing the session pointer. Now, the middleware contacts the Yivi server using the given session pointer. If the Yivi session
-was successful, it will obtain the value for the disclosed attribute and send it to PEP's authentication server to obtain an authentication token. Finally, it will forward this
-authentication token to the requester as a JSON string.
+was successful, it will obtain the value for the disclosed attribute and send it to PEP's authentication server (i.e., it will perform PEP's authentication\todo{If needed, I can
+talk about OAuth} flow) to obtain an authentication token. Finally, it will forward this authentication token to the requester as a JSON string.
 
 \subsection{Security evaluation}
 This is the core component of the solution and is security-critical, as it is in charge of authenticating the study participants.  Due to its criticality, I employed a number of
@@ -977,15 +977,74 @@ case, it is Yivi's responsibility to provide unguessable session pointers. \par
 Concluding, let's also briefly consider what could happen if the endpoints are not queried in the expected order. The \enquote*{qr} endpoint can be queried successfully at any
 time, as it doesn't require to provide any information. But querying it just results in the opening of a new Yivi session on the Yivi server. This does not pose any security
 issue. Querying the other two endpoints before the \enquote*{qr} means querying them without knowing a valid Yivi session pointer, but passing an invalid session pointer just
-results in an error. 
+results in an error. \par
+A final note about this component's trust: it needs to be executed on a trusted machine, as it sees all study participants' PEP authentication tokens. This is no different from
+PEP's authentication server, which is the piece of software that generates such tokens. Since this component is logically a part of the authentication server and has the same trust
+requirement, it would be natural to install it on the same machine running PEP's authentication server. One could be tempted to try to move the functionality that requests PEP's
+authentication token from this component to the client application used by study participants to log in \ref{pep_plp}, in order to not have an additional component that sees a
+participant's authentication token. The problem here is that, to obtain such token, one needs to send the value of the disclosed Yivi attribute. If we let the client do this, it
+would entail having the attribute's verification done client-side. So it would be possible to skip the attribute's verification entirely and send an arbitrary value to PEP's
+authentication server, breaking authentication.
 
 
-\section{PEP Participant Login Portal (PEP PLP)}
-This is the component that the study participants interact directly with to access their data inside PEP. Initially, the idea was to implement this as a web application, as in
-recent times most computer users got used to web applications. Additionally, this would make it easier to have cross-platform support, as it would be on the browser to account for
-OS and architectural differences. As with the other components, I used the Rocket web framework \cite{rocket} to implement this.  
+\section{PEP Participant Login Portal (PEP PLP)}\label{pep_plp}\todo{link to old GitHub branch}
+This is the component that the study participants interact directly with to access their data inside PEP. It communicates with the middleware described in \ref{middleware} to
+let a study participant login to PEP by disclosing an Yivi attribute, and then lets the participant browse the files containing medical tests' results. 
+
+\subsection{Failed attempt}
+Initially, the idea was to implement it as a web application, as in recent times most computer users got used to web applications. Additionally, this would make it easier to have
+cross-platform support, as it would be on the browser to account for OS and architectural differences. As with the other components, I used the Rocket web framework \cite{rocket}.
+In this way, I implemented a web application that, communicating with the middleware presented in \ref{middleware}, was able to display an Yivi QR code to have study participants
+perform an Yivi session to authenticate themself. It worked up to the point of receiving PEP's authentication token. Then the problem was actually accessing the data with the
+token. To not have to reimplement PEP's internal protocols, the idea was to leverage pecli \ref{pepcli} to download the data. But pepcli is a C++ executable, so it can't be used
+as-is inside a web application. The idea was to transpile it to a web application written in WebAssembly using Emscripten \cite{emscripten}. But, this requires to transpile not
+just pepcli's code, but also all its dependencies and update pepcli's CMake config to point to the transpiled dependencies. Additionally, PEP is organized as a single big project
+with a single build configuration intended to be built using ninja \todo{which in turns creates a CMake config?}. While there are different build targets, it is not modular enough
+to feature a build target that builds just pepcli. So my approach was roughly as follows:
+
+\begin{enumerate}
+		\item Try to run the configuration step using Emscripten's tools
+		\item If step 1 fails, modify CMake configuration and try again
+		\item Try to compile pepcli using Emscripten
+		\item If step 3 fails, analyze the error, fix it and try again 
+\end{enumerate}
+
+Sometimes the modifications to CMake's config consisted in pointing to a WebAssembly version of some dependency that either I compiled or I found already transpiled on the web.
+Some other times it was about deleting some directory inside PEP's repository to avoid compiling some part of the project that was not related to pepcli, but that by requiring some
+additional dependency made the configuration or compilation step fail. \par
+But, after being able to transpile some of pepcli's dependencies to WebAssembly, I saw that each time I fixed an error new ones were surfacing. After spending some weeks trying to
+get a WebAssembly version of pepcli, I started doubting that this approach would have lead to a positive result in a reasonable amount of time, so I abandoned this path.
+
+\subsection{The final version}
+Since my attempt at writing a web application leveraging pepcli to access the data failed, I decided to write a traditional desktop application: this guarantees that there would be
+no problem in invoking an external executable. Some searching for a Rust GUI library made me find out about Dioxus \cite{dioxus}. I choose to use this library for two main reasons:
+
+\begin{itemize}
+\item It aims at letting developers compile the same code to different build targets: desktop application, web application or mobile application. Assuming this works\footnote{I did
+		not attempt to compile my application for other targets. If the PEP team decides to reuse my code, they will need to test this.}, it opens various possibilities for future
+		development without having to maintain separate codebases for different targets.
+\item By supporting the ability to render GUIs written in HTML, it enabled me to reuse some of the work I already did for the attempt at writing a web application.
+\end{itemize}
+
+The final result is a desktop application written in Rust that communicates with the middleware presented in section \ref{middleware} to obtain a PEP authentication token. Once
+obtained, it uses pepcli to download the medical data pertaining the study participant and presents a list to the user letting him browse the files. Since this is a proof of
+concept, I opted for the easiest solution of downloading all the files and then presenting a list of the files. It is left as future work to optimize this, if needed, to only download 
+a file if the user intends to open it. My code already contains two unused functions that could be used as part of a solution that downloads only the files requested by the user.
 
 \subsection{Security evaluation}
+This component communicates with the middleware presented in section \ref{middleware} to obtain an authentication token and then invokes pepcli to interact with the rest of PEP and
+download the participant's files. The actual authentication is performed by Yivi and the middleware, this application just displays a QR code and waits for the Yivi session to
+complete\footnote{To know when the Yivi session is completed, it polls the middleware's \enquote*{status} endpoint.}. So it doesn't add any attack surface to the authentication
+process. Then grabs the PEP authentication token by the middleware's \enquote*{token} endpoint. The rest of this application's logic is offloaded to pepcli and this just adds a
+convenient GUI on top of it. \par
+The main risk one faces when using this application is posed by the handling of medical data. According to the GDPR, this peculiar category of data is a \enquote*{special category}
+and requires handling with particular care \cite{gdpr-art-9}. All the downloaded files get deleted when the application is closed, to avoid leaving around sensitive files on a
+computer that the study participant could be sharing with other people. To harden against the possibility of the files not being deleted due to abrupt termination of the
+application, all the data the application writes on disk is stored inside a temporary directory managed by the OS, so if the application does not delete it the OS will eventually
+delete the files on its behalf. \par
+Note that by default, this application runs as the same user as the user logged on the OS. So, a malicious application running with the user's privileges or higher, could access
+the files downloaded with this component. It is the user's responsibility to take precautions in order to avoid having malware running on his system.
+
 
 \iffalse
 
