@@ -18,6 +18,7 @@
 \usepackage{etoolbox} %csquotes dependency
 \usepackage{csquotes} %LaTex is great for math, less great for putting words in double quotes. This is a fix for that. See https://blog.chapagain.com.np/latex-fix-for-backward-quotation-mark/
 \usepackage{listings, listings-rust} %code listings
+\usepackage{minted} %listings doesn't work well with Bash
 
 \graphicspath{ {./images/} }
 
@@ -388,14 +389,32 @@ together, generate the user's private key. These factors are split between two s
 entities), so none of the two has knowledge of the user's private key. The user multiplies the two factor, obtaining its own key.
 
 \begin{figure}[H]
+	\vspace*{-10pt}
 	\includegraphics[scale=0.1, angle=-90]{enrollment}
 	\caption{PEP's enrollment flow as a BPMN diagram}
 	\label{bpmn-enrollment-flow}
 \end{figure}
 
-\subsection{pepcli}\label{pepcli}\todo{mention the commands relevant for my solution and explain what they do}
-\textit{pepcli} is a command line client used to interact with PEP. It implements data access as well as all the functionalities needed for administration tasks, like adding
-columns or rows to the PEP table and managing permissions. Therefore, it implements all the protocols needed to support the procedures outlined in section \ref{data_access} \enquote*{Data access}.
+\subsection{pepcli}\label{pepcli}
+\textit{pepcli} \cite{pepcli} is a command line client used to interact with PEP. It implements data access as well as all the functionalities needed for administration tasks, like adding
+columns or rows to the PEP table and managing permissions. Therefore, it implements all the protocols needed to support the procedures outlined in section \ref{data_access}
+\enquote*{Data access}. Here I will briefly list the relevant subcommands that are later used as part of the solution to give study participants access to their data inside PEP.
+Those containing \enquote*{ama} perform access manager administration, while those containing \enquote*{asa} perform authentication server administration.
+For more details and a full list of supported commands see \cite{pepcli}.
+
+\begin{itemize}
+		\item ama columnGroup create - creates a new column group.
+		\item ama column addTo - adds a column to an existing column group.
+		\item ama cgar create - creates a new access rule for an existing column group.
+		\item asa group create - creates a new \textit{user} group.
+		\item asa user addTo - adds an existing \textit{user} to an existing \textit{user} group.
+		\item ama group create - creates a new \textit{participant} group.
+		\item ama pgar create - creates a new participant group access rule, to give an existing \textit{user} access to an existing \textit{participant} group.
+		\item ama cgar create - creates a new column access rule, to give an existing user access to an existing column group.
+		\item register interactive - interactively registers a new study participant.
+		\item ama group addTo - adds a study \textit{participant} to an existing \textit{participant} group.
+\end{itemize}
+
 
 \chapter{Challenges and possible solutions}
 \section{The issue at play}
@@ -444,7 +463,7 @@ solutions, instead, while feasible in theory, failed in practice. This section b
 nicely integrates with the rest of PEP's architecture. Even though this attempt at a solution did not work out, some elements of it were used as part of the working solution
 presented later.\par
 
-\subsection{Design choices}
+\subsection{Design choices}\label{failed_attempt_design}
 As PEP already uses the SAML standard \cite{sstc-saml-core-errata-2.0-wd-07} for authentication, it would be natural to implement a SAML identity provider using Yivi \cite{irma-app}.
 Here is a BPMN diagram of the process that would be required to register a new study participant.
 
@@ -771,6 +790,12 @@ to compile the code. To retain memory safety when using references, Rust's borro
 \end{enumerate}
 
 The rationale for the first condition is preventing data races, while the second condition prevents dangling pointers. \par
+it is important to remember that even a programming language designed to be safe can still show unsafe behavior, due to bugs in its specification or in its implementation.
+Unfortunately, Rust is no exception: it is possible to exploit some language features, namely lifetimes and variances\todo{add citations} to introduce memory unsafety as is shown
+in this GitHub repository \cite{cve-rs}. Ironically, it is so hard to write unsafe code using safe Rust\footnote{I.e. Rust without the \enquote*{unsafe} keyword} that the original
+implementation showed in the repository failed to produce a segmentation fault on some of the build targets supported by the Rust compiler \cite{cve-rs-bug}. As the issue reporter put it,
+the bug had a bug. This shows how, even in the face of known issues, Rust still has a great advantage over C and C++: in those languages you need to put effort to avoid memory
+issues, in Rust instead you need to put effort if you want to get memory issues. \par
 Using a memory-safe programming language does not guarantee to have bug-free code: this can only be guaranteed by formal verification. For example, a memory-safe language does not
 help with logic bugs, i.e. errors caused by a developer coding the wrong procedure to obtain a given result. But it eliminates many common programming
 mistakes that often lead to security vulnerabilities: according to the Microsoft Security Response Center, about 70\% of the security vulnerabilities in the Microsoft software
@@ -842,14 +867,14 @@ SimpleSAMLphp's developers for help didn't turn anything. After trying to fix th
 \chapter{The implemented solution}
 This chapter describes the solution implemented in the final proof of concept. The solution described in \ref{failed_implementation} did not work due issues with getting existing
 SAML IdPs work with Yivi. While it would be possible to write a new IdP from scratch supporting authentication via Yivi credentials, it would require a significant effort.
-Additionally, its maintenance would be an additional burden for the PEP team. How to make the previously presented idea work, but without a SAML identity provider? \par
+Additionally, its maintenance would be an extra burden for the PEP team. How to make the previously presented idea work, but without a SAML identity provider? \par
 After discussing possible solutions with the PEP team, a new possibility surfaced. PEP does not interact directly with the IdP, there is an Apache server running the Shibboleth Service
 Provider in-between PEP and the SAML IdP. Shibboleth redirects the user to SURFConext's IdP and, if the authentication is successful, forwards the verified attribute to PEP. So
 here is a possible solution: write a middleware that works alongside Shibboleth; the user discloses its own attribute to this component, which in turn sends the disclosed attribute
 to PEP's authentication server. From PEP's perspective, there is no difference between Shibboleth and this middleware. \par
 Compared to writing a SAML IdP supporting Yivi, this solution is much simpler, as it does not require to implement the SAML specification: once the required credential is verified
-by an Yivi server, this component just forwards the disclosed attribute value (the identifier described in \todo{add ref}) to PEP's authentication server via an HTTP request. By
-being a simple and small component, its maintenance adds only a little work to the PEP team's duties. 
+by an Yivi server, this component just forwards the disclosed attribute value (the identifier described in section \ref{failed_attempt_design}) to PEP's authentication server via
+an HTTP request. By being a simple and small component, its maintenance adds only a little work to the PEP team's duties. 
 
 \section{The Shibboleth Service Provider: An Overview}
 
@@ -860,20 +885,17 @@ It acts as an intermediary between an application and the authentication system:
 Shibboleth Service Provider, which in turn forwards the request to the authentication system. The authentication system then verifies the user's identity and returns an
 authentication response to the Shibboleth Service Provider. Finally, the application receives the authentication response from the Shibboleth Service Provider and can either grant or 
 deny access to the user based on the response. \par
-In the specific case of PEP, the Shibboleth Service Provider is a component of PEP's authentication server \ref{pep_servers}. Here is how this flow works in this particular case.
+In the specific case of PEP, the Shibboleth Service Provider is part of PEP's authentication server \ref{pep_servers}. Here is how this flow works in this particular case.
 When a user initiates the login flow, the Shibboleth Service Provider redirects the user to SURFConext's SAML IdP (this is an SP-initiated login flow, see section \ref{saml}). The
 user then proceeds to authenticate himself to SURFConext and, if the authentication is successful, SURFConext's IdP gives the user a signed SAML assertion. The user's browser
 forwards this assertion to the Shibboleth Identity Provider which, after checking the assertion's validity, forwards the contained attribute to PEP's authentication server. Here is
 this flow represented as a BPMN diagram:
 
-%see https://tex.stackexchange.com/questions/140157/centre-an-image-ignoring-margins to fix placement
 \begin{figure}[H]
+		\vspace*{-100pt} %This fixes vertical placement: without it, there's some empty space at the top and the page number at the bottom ends up inside the image
 		\includegraphics[scale=0.08, angle=-90]{shibboleth_authentication_flow.png}
 		\caption{How Shibboleth integrates with the rest of PEP's authentication server to authenticate users.}
 \end{figure}
-
-
-
 
 
 
@@ -952,7 +974,10 @@ counting blank lines and comments, the total line count amounts at 537 lines spr
 also uses Rust's object-oriented encapsulation features, so that the security and correctness of each component can be evaluated in isolation from the others. Additionally, the
 application is stateless. This makes it easier to reason about the whole application's security: since it is stateless, it is possible to consider the security of each endpoint in
 isolation from the others; the application's behavior does not depend upon the order in which the endpoints are contacted. If this was not the case, one would have to consider each
-possible order in contacting the endpoints. Where possible, I used established libraries instead of writing my own code. \par
+possible order in contacting the endpoints. Where possible, I used established libraries instead of writing my own code. This is a trade-off, as adding external dependencies to a
+software project can also be a source of issues: it requires to either trust or verify these dependencies and make sure to keep them up-to-date. But this is partially mitigated by
+using Cargo \cite{cargo} to manage the project. Cargo is Rust's official build and dependency management system, and helps in keeping dependencies current. Since my work is a proof of concept,
+there is more value in having a compact code whose functionality is easy to understand, rather than having more code to minimize the amount of dependencies.\par
 There is an important detail to note about TLS support: the Rocket web framework features a TLS implementation, but my proof of concept does not protect the endpoint's traffic by
 default. This means that someone sniffing an user's connection could steal this person's PEP authentication token. So, before deploying this component to a production environment,
 one needs to either configure Rocket to use its own native TLS support as explained in \cite{rocket_guide_tls}, or to put it behind a reverse-proxy configured for TLS-termination.
@@ -987,19 +1012,23 @@ would entail having the attribute's verification done client-side. So it would b
 authentication server, breaking authentication.
 
 
-\section{PEP Participant Login Portal (PEP PLP)}\label{pep_plp}\todo{link to old GitHub branch}
+\section{PEP Participant Login Portal (PEP PLP)}\label{pep_plp}
 This is the component that the study participants interact directly with to access their data inside PEP. It communicates with the middleware described in \ref{middleware} to
 let a study participant login to PEP by disclosing an Yivi attribute, and then lets the participant browse the files containing medical tests' results. 
 
 \subsection{Failed attempt}
 Initially, the idea was to implement it as a web application, as in recent times most computer users got used to web applications. Additionally, this would make it easier to have
-cross-platform support, as it would be on the browser to account for OS and architectural differences. As with the other components, I used the Rocket web framework \cite{rocket}.
-In this way, I implemented a web application that, communicating with the middleware presented in \ref{middleware}, was able to display an Yivi QR code to have study participants
+cross-platform support, as it would be on the browser to account for OS and architectural differences. My original plan was to have a server-side part of this application
+implementing the middleware's functionality \ref{middleware} written in Rust, and a client-side part taking care of downloading and decrypting the data implemented in Javascript.
+As with the other components, for the server-side functionality I used the Rocket web framework \cite{rocket}.
+In this way, I implemented a web application that, using a server-side backend to communicate with an Yivi server, was able to display an Yivi QR code to have study participants
 perform an Yivi session to authenticate themself. It worked up to the point of receiving PEP's authentication token. Then the problem was actually accessing the data with the
-token. To not have to reimplement PEP's internal protocols, the idea was to leverage pecli \ref{pepcli} to download the data. But pepcli is a C++ executable, so it can't be used
-as-is inside a web application. The idea was to transpile it to a web application written in WebAssembly using Emscripten \cite{emscripten}. But, this requires to transpile not
+token. To not have to reimplement PEP's internal protocols, the idea was to leverage pepcli \ref{pepcli} to download the data. But pepcli is a C++ executable, so it can't be used
+as-is inside a web application\footnote{Or at least, I was not able to find a way to invoke a local binary from a web application. Which makes sense: if this was possible, it would
+expose a functionality that would enable an attacker to escape from a browser's sandbox by having direct access to locally-installed software.}. The idea was to transpile it to a web 
+application written in WebAssembly using Emscripten \cite{emscripten}. But, this requires to transpile not
 just pepcli's code, but also all its dependencies and update pepcli's CMake config to point to the transpiled dependencies. Additionally, PEP is organized as a single big project
-with a single build configuration intended to be built using ninja \todo{which in turns creates a CMake config?}. While there are different build targets, it is not modular enough
+intended to be first configured with CMake and then built using Ninja \cite{ninja}. While there are different build targets, it is not modular enough
 to feature a build target that builds just pepcli. So my approach was roughly as follows:
 
 \begin{enumerate}
@@ -1013,7 +1042,8 @@ Sometimes the modifications to CMake's config consisted in pointing to a WebAsse
 Some other times it was about deleting some directory inside PEP's repository to avoid compiling some part of the project that was not related to pepcli, but that by requiring some
 additional dependency made the configuration or compilation step fail. \par
 But, after being able to transpile some of pepcli's dependencies to WebAssembly, I saw that each time I fixed an error new ones were surfacing. After spending some weeks trying to
-get a WebAssembly version of pepcli, I started doubting that this approach would have lead to a positive result in a reasonable amount of time, so I abandoned this path.
+get a WebAssembly version of pepcli, I started doubting that this approach would have lead to a positive result in a reasonable amount of time, so I abandoned this path. The code I
+wrote to implement this solution  is still available in \cite{old_branch}. 
 
 \subsection{The final version}
 Since my attempt at writing a web application leveraging pepcli to access the data failed, I decided to write a traditional desktop application: this guarantees that there would be
@@ -1021,7 +1051,9 @@ no problem in invoking an external executable. Some searching for a Rust GUI lib
 
 \begin{itemize}
 \item It aims at letting developers compile the same code to different build targets: desktop application, web application or mobile application. Assuming this works\footnote{I did
-		not attempt to compile my application for other targets. If the PEP team decides to reuse my code, they will need to test this.}, it opens various possibilities for future
+		not attempt to compile my application for other targets. If the PEP team decides to reuse my code, they will need to test this. But, given the issues in converting pepcli
+to a web application, I expect that to make this target work they would need first to reimplement PEP's communication protocols in this application, so that it does not depend on
+pepcli anymore.}, it opens various possibilities for future
 		development without having to maintain separate codebases for different targets.
 \item By supporting the ability to render GUIs written in HTML, it enabled me to reuse some of the work I already did for the attempt at writing a web application.
 \end{itemize}
@@ -1045,6 +1077,99 @@ delete the files on its behalf. \par
 Note that by default, this application runs as the same user as the user logged on the OS. So, a malicious application running with the user's privileges or higher, could access
 the files downloaded with this component. It is the user's responsibility to take precautions in order to avoid having malware running on his system.
 
+\section{PEP configuration}
+To make this solution work, it is required to also do some configuration work on PEP's side to configure the right permissions. Here I will present a concrete example illustrating
+all the needed pepcli commands to obtain a correct configuration. Note that this commands do not need to be executed manually: it is possible to create a script executing them or,
+as anticipated in \todo{add ref}, it would be possible to hardcode inside PEP the \textit{participant} user group to have the correct permissions applied automatically to all
+members of the group.
+
+\subsection{general configuration}
+The configuration presented here will be reused as-is for all study participants, thus it is required to perform it only once. It consists in first creating a column group
+\ref{data_structures} with all the columns containing the results of medical tests (or, in general, all the columns containing data that one needs to give study participants access
+to). Then creating an access group, also known as a column group access rule, and give it access to the newly created column group. This constitutes an access permission, and
+assigning it to a user gives the user access to the specified columns. \par
+In this example, I will be creating a column group called \textit{visits} containing a column called \textit{Visit1.DNA} and a column group access rule called \textit{Participant}. The 
+\enquote*{addTo} command needs to be repeated for each column that has to be part of the column group. 
+
+\begin{minted}{bash}
+#Create Visits column group
+$ pepcli --oauth-token-secret OAuthTokenSecret.json --oauth-token-group \
+"Data Administrator" ama columnGroup create Visits
+
+#Add column(s) to the Visits column group
+$ pepcli --oauth-token-secret OAuthTokenSecret.json --oauth-token-group \
+"Data Administrator" ama column addTo Visit1.DNA Visits
+
+# Create column-group-access-rule
+$ pepcli --oauth-token-secret OAuthTokenSecret.json --oauth-token-group \
+"Access Administrator" ama cgar create Visits Participant read
+\end{minted}
+
+\subsection{Per-participant configuration}
+The configuration presented in this section needs to be repeated for each study participant. It works for newly-registered and already-registered participants as well. As
+mentioned previously, it is possible to script the execution of these commands, so to avoid tedious manual work. Even better, in the future it would be possible to have a default
+user group for study participants, so that PEP can automatically apply the correct permissions to all members of the group. 
+
+\begin{enumerate}
+
+\item Create a new group. The group's name is the same as the Yivi attribute's value. This poses no security issue, as the attribute's value needs to be validated by the Yivi server.
+\begin{minted}{bash}
+$ pepcli --oauth-token-secret OAuthTokenSecret.json --oauth-token-group \
+"Access Administrator" asa group create participant:bab472a1-f8b7-4397-8338\
+-fb972e3b8280
+\end{minted}
+
+\item Add a new user to the newly created group. Again, the user's name can be the same as the Yivi attribute's value.
+\begin{minted}{bash}
+$ pepcli --oauth-token-secret OAuthTokenSecret.json --oauth-token-group \
+"Access Administrator" asa user addTo participant:bab472a1-f8b7-4397-8338\
+-fb972e3b8280 participant:bab472a1-f8b7-4397-8338-fb972e3b8280
+\end{minted}
+
+\item Create a new participant group. The participant group's name can be the same as the username (and so equal to the Yivi attribute's value).
+\begin{minted}{bash}
+$ pepcli --oauth-token-secret OAuthTokenSecret.json --oauth-token-group \
+"Data Administrator" ama group create participant:bab472a1-f8b7-4397-8338\
+-fb972e3b8280
+\end{minted}
+
+\item Create participant group access rules giving the user access to the new participant group. 
+\begin{minted}{bash}
+$ pepcli --oauth-token-secret OAuthTokenSecret.json --oauth-token-group \
+"Access Administrator" ama pgar create participant:bab472a1-f8b7-4397-8338\
+-fb972e3b8280 participant:bab472a1-f8b7-4397-8338-fb972e3b8280 access
+
+# This one is needed to actually download the files 
+# invoking pepcli with the --all-accessible switch
+$ pepcli --oauth-token-secret OAuthTokenSecret.json --oauth-token-group \
+"Access Administrator" ama pgar create participant:bab472a1-f8b7-4397-8338\
+-fb972e3b8280 participant:bab472a1-f8b7-4397-8338-fb972e3b8280 enumerate
+\end{minted}
+
+
+\item Create a column access rule giving the user read-only access to the \textit{Visits} column group.
+\begin{minted}{bash}
+$ pepcli --oauth-token-secret OAuthTokenSecret.json --oauth-token-group \
+"Access Administrator" ama cgar create Visits participant:bab472a1-f8b7\
+-4397-8338-fb972e3b8280 read
+\end{minted}
+
+\item Crete new participant.
+\begin{minted}{bash}
+$ pepcli --oauth-token-secret OAuthTokenSecret.json --oauth-token-group \
+"Data Administrator" register interactive
+\end{minted}
+
+\item Add participant to the previously created participant group. \textit{GUM381294055743} is the output identifier from the previous command.
+\begin{minted}{bash}
+$ pepcli --oauth-token-secret OAuthTokenSecret.json --oauth-token-group \
+"Data Administrator" ama group addTo participant:bab472a1-f8b7-4397-8338\
+-fb972e3b8280 GUM381294055743
+\end{minted}
+
+\end{enumerate}
+
+Now The user has access to the uploaded and to-be uploaded data.
 
 \iffalse
 
