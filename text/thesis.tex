@@ -59,6 +59,10 @@
 \date{\thesisdate}
 
 
+%Added for showing subsubsection in index and giving them numbers to properly reference them in the text
+\setcounter{tocdepth}{4}
+\setcounter{secnumdepth}{4}
+
 
 \begin{document}
 
@@ -97,12 +101,16 @@
 \end{titlepage}
 
 \begin{abstract}
-	Polymorphic Encryption and Pseudonimisation (PEP) is both a technology and a project developed at iHub to let researcher collect medical data of people taking part in studies, 
+	Polymorphic Encryption and Pseudonimisation (PEP) is both a technology and a project developed at iHub to let researchers collect medical data of people taking part in studies, 
 	while preserving their privacy. To do so, it uses ElGamal cipher's properties that allow to re-key and re-shuffle encrypted data and participant identifiers called local 
 	pseudonyms. While this system effectively safeguards a participant's privacy, it also makes it non-trivial to design a way for the participants to access their own data: due to 
 	PEP's privacy goals, the typical login with email and password is out of the question. This thesis presents a conceptual design for a login system for study participants that
 	is in line with PEP's data protection goals and a proof of concept implementation of such system. 
 \end{abstract}
+
+\section*{Acknowledgements}
+I would like to thank Bart Jacobs for his feedback and guidance during the writing of this thesis and Erik Poll for taking the time to review it. I would also like to thank the PEP
+team at iHub, for dedicating some of their limited time to answer my questions about PEP. My gratitude goes to my parents, for their continued support during my studies.
 
 \tableofcontents
 \pagebreak
@@ -119,7 +127,7 @@ solve this problem, PEP uses ElGamal's re-shuffle operation, that lets derive ma
 To enable reproducibility of historical queries, PEP has the concept of data cards. Each piece of data is stored inside a data card which is in turn stored in one of the table's
 cells. If the data contained inside a cell needs to be updated, instead of deleting the already existing card, a new data card is generated and stored \enquote*{on top} of the previous data
 card. Thus, each cell contains a deck of cards, and it is possible to see which data a query would have returned in a specific past point in time. \par
-PEP's current focus is healthcare, but its general architecture can be used for different purposes. NOLAI \cite{nolai} \cite{pepproject} recently announced that it will use PEP to
+PEP's current focus is on health, but its general architecture can be used for different purposes. NOLAI \cite{nolai} \cite{pepproject} recently announced that it will use PEP to
 collect their research data in the education field. \par
 A side effect of PEP's privacy focus is that it didn't ship with a way for study participants, or people whose data is stored inside PEP in general, to get access to their own
 data. This constitutes a problem, as article 15 of the GDPR states that \enquote*{The data subject shall have the right to obtain from the controller confirmation as to whether or not
@@ -216,7 +224,7 @@ finding $k^{-1} \in \mathds{F}_p$. Then we compute $A'=[k^{-1}]A$. The pair $(A'
 \end{property}
 
 \begin{property}[Re-shuffling] It is possible to transform a ciphertext in a way that it decrypts to a re-shuffled version of the message M under the same key, i.e. it decrypts to $nM$ for
-some $n \in \mathds{F}_p$. To do this, we compute $A'=nA$ and $C'=nC$. The pair $(A', C')$ decrypts to $[n]M$. \newline
+		some $n \in \mathds{F}_p$. To do this, we compute $A'=[n]A$ and $C'=[n]C$. The pair $(A', C')$ decrypts to $[n]M$. \newline
 \begin{proof}
 		By explicitly writing the decryption process, we obtain:
 		$$C'-[b]A'=[n]C-[bn]A=[n](M+[a]B)-[bna]G=[n]M+[na]B-[bna]G=$$
@@ -227,7 +235,7 @@ some $n \in \mathds{F}_p$. To do this, we compute $A'=nA$ and $C'=nC$. The pair 
 \subsection{Data structures}\label{data_structures}
 The main data structure used by PEP is a bidimensional table divided into rows and columns \cite{pep-blueprint}. Each row represents a study participant and each column either the 
 results of some medical test or some data used to support PEP's functionalities, like a timestamp used to produce point-in-time queries. The cells pertaining to exam results contain a 
-deck of data cards. \par
+deck of data cards. \par \todo{Is this clear? Maybe specify that a cell is the intersection of a row with a column?}
 Each data card contains the actual results and some metadata. The results and part of the metadata are encrypted using AES-256 \cite{AES-standard} in GCM mode \cite{GCM}. There is then 
 an additional field, containing the AES key encrypted using ElGamal over Curve25519 \cite{elliptic-elgamal}. Adopting hybrid Cryptography enables PEP to use ElGamal's properties at a 
 performance cost close to the one of applying AES-256-GCM. \par
@@ -256,7 +264,7 @@ pseudonyms printed on the blood vials could be called ShortPseudonym.Visit1.Bloo
 
 
 \subsection{CRM}\label{CRM}
-While technically not a part of PEP, the deployment of PEP also entails a customer relationship management (CRM) software as part of logistic procedures involving study participants. In 
+While technically not a part of PEP, the deployment of PEP also entails customer relationship management (CRM) software as part of logistic procedures involving study participants. In 
 fact, after reading the previous section, a question arises naturally: if a nurse or doctor is collecting some sort of samples from study participants to be then sent to a laboratory 
 for analysis, and has a set of printed labels with the short pseudonyms generated by PEP, how can he know which is the correct label to apply to each sample? \par
 To answer this question, we need to take a step back and briefly describe what happens when a participant is accepted for a study. Let's say that Alice is willing to take part in a
@@ -288,12 +296,12 @@ later, i.e. a person with the right to give researchers access to the datasets d
 %This and the next section mention PEP users. These are in principle (and, before this thesis work gets implemented, also in practice) different from study participants. A PEP user is
 %someone that interacts with PEP, while a study participant is someone taking part in a medical study as a data contributor.\todo{explain earlier} \par
 To be able to interact with PEP's table, a user needs a ticket granting the correct permissions for the required operation. PEP implements a way to specify access rules for
-specific user groups, and then a specific user is assigned to a group. These rules are then used to determine whether to grant a ticket for a specific operation or not. This
+specific user groups, and then a specific user is assigned to a group. These rules are stored by the access manger server \ref{pep_servers} and are then used to determine whether to grant a ticket for a specific operation or not. This
 constitutes a form of role-based access control \cite{rbac}. \par
-To be able to bootstrap this permissions system, it is needed that someone has the right to write rules for access groups, to specify access groups and to add users to groups. For 
+To be able to bootstrap this permissions system, it is needed that some system administrator has the right to write rules for access groups, to specify access groups and to add users to groups. For 
 this reason, PEP has two builtin access groups: \enquote*{Data Administrator} and \enquote*{Access Administrator} \cite{pep-blueprint}. A member of the former group is called a data administrator, and 
 has the permissions needed to modify columns, column groups, and participant groups\footnote{These are also called row groups, as each participant is represented by a row inside
-PEP's table.}. A member of the latter group is called an access administrator, and has the right to modify the 
+PEP's table.}. This involves changing the PEP table's structure. A member of the latter group is called an access administrator, and has the right to modify the 
 access rules used to issue tickets, modify and read the user list to issue authentication tokens, and manually issue authentication tokens. These two roles are given to distinct people, 
 so that they would need to collude to access a specific piece of data. \par
 Let's assume that the data administrator would like to access the results of a participant's blood test. First of 
@@ -323,7 +331,7 @@ PEP user certificates expire after a limited time\footnote{I don't know the exac
 disk to harden against the possibility of leaking sensitive information if a study participant shares its computer with others. As a result of this choice, a new certificate gets
 generated at each login instead of attempting to reuse an old one, so the actual validity timespan of a PEP user certificate does not matter.} and are generated on-demand during a procedure called enrollment. 
 There are two ways a user can obtain a PEP certificate. In the first scenario, users authenticate themselves using an authentication token, and generate a certificate that is then
-signed by PEP. The token is generated and given them by the access administrator, who also performs the user identification. \par
+signed by PEP. The token can be generated and given them by the access administrator, who also performs the user identification. \par
 In the second scenario, a program requests an authentication token for the user using an HTTP API endpoint. In this case, the actual identity verification is done using the SAML 
 standard \cite{sstc-saml-core-errata-2.0-wd-07} and SURFconext \cite{surfconext} as an identity provider. Once the user's identity is established, its access rights are determined by 
 looking up a user list to determine the user's membership of any access group. 
@@ -418,7 +426,7 @@ For more details and a full list of supported commands see \cite{pepcli}.
 
 \chapter{Challenges and possible solutions}
 \section{The issue at play}
-\subsection{Authenticating study participants, but how?}
+\subsection{Authenticating study participants, but how?}\label{authenticationg_but_how} \todo{Implement feedback on page 20's right side}
 The primary goal of this work is to give study participants access to their own data, while also protecting their privacy. Secondarily, the solution should require only limited
 changes to the already existing design and infrastructure of PEP, and also work for study participants that are already registered inside PEP.\par Direct access via some mechanism
 external from PEP is not possible, as the data is encrypted as presented in \ref{data_structures}. This means that one has to go through PEP to get the right key and decrypt a
@@ -429,11 +437,16 @@ disclosed identity to look up the corresponding pseudonym inside the CRM using S
 deanonimyze the study participants, this access is very constrained and it would be risky to approach the CRM also as part of a solution to let participants consult their data.
 Obviously, each participant must have access to its own data only, so there is the need to link a person to a specific row of PEP's table, but without (directly) using the person's
 identity. \par 
-A way of obtaining the needed result, could be to give study participants their own PEP ID \ref{pseudonyms} during a study's registration phase as a Yivi credential,
-but this approach has been deemed to be risky by the PEP team, as it could reveal more information than needed. \par Another possibility could be to give participants a re-shuffled
-\ref{elgamal_recap} version of their PEP ID, a.k.a. a local pseudonym \ref{pseudonyms}. The problem here is that PEP's table does not contain the local pseudonyms, those get
-computed on-demand when someone accesses the data. So when logging in, PEP doesn't know what are the possible local pseudonyms associated to each participant\footnote{It
-would need to compute all the used local pseudonyms for all the registered study participants, which is clearly inefficient.}, thus it cannot easily link a person to its row this way. \par
+A way of obtaining the needed result, could be to give study participants their own PEP ID \ref{pseudonyms} during a study's registration phase as a Yivi credential, but this
+approach has been deemed to be risky by the PEP team, because it could reveal more information than needed. While there is no obvious security issue associated with giving study
+participants their own PEP ID, this value is used to derive the local pseudonyms \ref{pseudonyms}, which are a crucial privacy feature of PEP. As PEP's original design does not
+consider the possibility of leaking this value outside PEP, there is the possibility that some element of its design assumes implicitly that the PEP ID is unknown outside PEP
+itself. The PEP team did not reject this idea, but said that if I decided to follow this path, they would have needed some time to double-check that this solution does not
+introduce problems somewhere else in PEP's design. So I decided to see if there is a way to not use the PEP ID.\par 
+Another possibility could be to give participants a re-shuffled \ref{elgamal_recap} version of their PEP ID, a.k.a. a local pseudonym \ref{pseudonyms}. The problem here is that
+PEP's table does not contain the local pseudonyms, those get computed on-demand when someone accesses the data. So when logging in, PEP doesn't know what are the possible local
+pseudonyms associated to each participant\footnote{It would need to compute all the used local pseudonyms for all the registered study participants, which is clearly inefficient.},
+thus it cannot easily link a person to its row this way. \par
 Another way is to add a new column to PEP's table, containing a random identifier that can be given to the study participant as a Yivi credential when they register for a study.
 This would already be a working solution, as it would be possible to write a new PEP component that, during the login phase, looks at the disclosed credential and links the
 participant to its own row; thus giving them access to that row only. But this would require to modify PEP's table to add an extra column. \par 
@@ -454,14 +467,15 @@ inside PEP's table that contain the results of medical tests. As explained in se
 be present during a participant's registration inside PEP. This can be inconvenient in practice. But, by prepending the string \enquote*{participant:} to a random identifier, a
 future version of PEP
 could detect that a participant is logging in, and automatically give the relative user the correct permissions without having to manually specify those for each study participant.
-The exact permissions that are granted to a user to let a study participant access his own data are listed alongside the relative pepcli commands in section \todo{add ref once I
-write it}.
+The exact permissions that are granted to a user to let a study participant access his own data are listed alongside the relative pepcli commands in section \ref{pep_configuration}.
 
 \section{Failed attempt}
 At the beginning of this work, I considered many possible solutions, that either turned out to not respect PEP's privacy standard or were deemed risky by the PEP team. Other
 solutions, instead, while feasible in theory, failed in practice. This section briefly presents one of those of the latter category, as it would have made for a clean solution that
 nicely integrates with the rest of PEP's architecture. Even though this attempt at a solution did not work out, some elements of it were used as part of the working solution
 presented later.\par
+As better explained in section \ref{failed_attempt_design}, this solution's core concept was to use SAML \ref{saml} and YIVI \ref{yivi} to authenticate study participants by using
+a SAML identity provider compatible with YIVI. Unfortunately, I could not get any of the existing SAML IdPs work with YIVI \todo{maybe mention the other extendable IdPs, https://gluu.org/ https://docs.jans.io/}, and implementing one from scratch is out-of-scope for this project.
 
 \subsection{Design choices}\label{failed_attempt_design}
 As PEP already uses the SAML standard \cite{sstc-saml-core-errata-2.0-wd-07} for authentication, it would be natural to implement a SAML identity provider using Yivi \cite{irma-app}.
@@ -790,12 +804,12 @@ to compile the code. To retain memory safety when using references, Rust's borro
 \end{enumerate}
 
 The rationale for the first condition is preventing data races, while the second condition prevents dangling pointers. \par
-it is important to remember that even a programming language designed to be safe can still show unsafe behavior, due to bugs in its specification or in its implementation.
-Unfortunately, Rust is no exception: it is possible to exploit some language features, namely lifetimes and variances\todo{add citations} to introduce memory unsafety as is shown
-in this GitHub repository \cite{cve-rs}. Ironically, it is so hard to write unsafe code using safe Rust\footnote{I.e. Rust without the \enquote*{unsafe} keyword} that the original
-implementation showed in the repository failed to produce a segmentation fault on some of the build targets supported by the Rust compiler \cite{cve-rs-bug}. As the issue reporter put it,
-the bug had a bug. This shows how, even in the face of known issues, Rust still has a great advantage over C and C++: in those languages you need to put effort to avoid memory
-issues, in Rust instead you need to put effort if you want to get memory issues. \par
+It is important to remember that even a programming language designed to be safe can still show unsafe behavior, due to bugs in its specification or in its implementation.
+Unfortunately, Rust is no exception: it is possible to exploit some language features, namely lifetimes \cite{rust-lifetimes} and variances \cite{rust-variances} to introduce
+memory unsafety as is shown in this GitHub repository \cite{cve-rs}. Ironically, it is so hard to write unsafe code using safe Rust\footnote{I.e. Rust without the \enquote*{unsafe}
+keyword} that the original implementation showed in the repository failed to produce a segmentation fault on some of the build targets supported by the Rust compiler
+\cite{cve-rs-bug}. As the issue reporter put it, the bug had a bug. This shows how, even in the face of known issues, Rust still has a great advantage over C and C++: in those
+languages you need to put effort to avoid memory issues, in Rust instead you need to put effort if you want to get memory issues. \par
 Using a memory-safe programming language does not guarantee to have bug-free code: this can only be guaranteed by formal verification. For example, a memory-safe language does not
 help with logic bugs, i.e. errors caused by a developer coding the wrong procedure to obtain a given result. But it eliminates many common programming
 mistakes that often lead to security vulnerabilities: according to the Microsoft Security Response Center, about 70\% of the security vulnerabilities in the Microsoft software
@@ -820,7 +834,7 @@ prepending the string \enquote*{participant:} to a version 4 UUID. Then it conta
 attribute \enquote*{irma-demo.PEP.id} with the generated string as the attribute's value. If the Yivi server answers with the requested attribute, the application generates a
 QR-code that the study participant scans to import the newly generated credential in their Yivi wallet.\footnote{Yivi calls \enquote*{wallet} its credential store} It also shows the attribute's value, so that PEP can
 be configured to link the credential to the right user\footnote{The configuration details are not provided in this section, as this attempt failed. But it would have been analogous
-to the configuration presented in}\todo{add ref inside footnote once I write (and explain) the config}. Here is a BPMN diagram showing the flow:
+to the configuration presented in section \ref{pep_configuration}}. Here is a BPMN diagram showing the flow:
 
 \begin{figure}[H]
 		\includegraphics[scale=0.1]{credential issuing.png}
@@ -872,7 +886,7 @@ After discussing possible solutions with the PEP team, a new possibility surface
 Provider in-between PEP and the SAML IdP. Shibboleth redirects the user to SURFConext's IdP and, if the authentication is successful, forwards the verified attribute to PEP. So
 here is a possible solution: write a middleware that works alongside Shibboleth; the user discloses its own attribute to this component, which in turn sends the disclosed attribute
 to PEP's authentication server. From PEP's perspective, there is no difference between Shibboleth and this middleware. \par
-Compared to writing a SAML IdP supporting Yivi, this solution is much simpler, as it does not require to implement the SAML specification: once the required credential is verified
+Compared to writing a SAML IdP supporting Yivi, this solution is much simpler, as it does not require implementing the SAML specification: once the required credential is verified
 by an Yivi server, this component just forwards the disclosed attribute value (the identifier described in section \ref{failed_attempt_design}) to PEP's authentication server via
 an HTTP request. By being a simple and small component, its maintenance adds only a little work to the PEP team's duties. 
 
@@ -964,8 +978,26 @@ perform an Yivi session. In the meantime, the requester uses the session pointer
 \enquote*{status} endpoint containing an Yivi session pointer, it uses this session pointer to query the Yivi server for the status of the pointed session and reports the answer
 back to the requester. This is needed so that the requester knows when a session is concluded and so the result is available. Once the Yivi session is done, the requester contacts
 the \enquote*{token} endpoint with a GET request containing the session pointer. Now, the middleware contacts the Yivi server using the given session pointer. If the Yivi session
-was successful, it will obtain the value for the disclosed attribute and send it to PEP's authentication server (i.e., it will perform PEP's authentication\todo{If needed, I can
-talk about OAuth} flow) to obtain an authentication token. Finally, it will forward this authentication token to the requester as a JSON string.
+was successful, it will obtain the value for the disclosed attribute and send it to PEP's authentication server (i.e., it will perform PEP's authentication\todo{Should I detail
+		how PEP's authentication flow works?} flow needed for PEP to trust the information send by this component) to obtain an authentication token. Finally, it will forward this authentication token to the requester as a JSON string. \par
+Here are three BPMN diagrams summarizing the functionality of this middleware. Due to formatting constraints, each endpoint has been schematized in a separate image.
+
+\begin{figure}[H]
+		\includegraphics[scale=0.1]{middleware_qr_endpoint.png}
+		\vspace{-10pt}
+		\caption{The "qr" endpoint}
+		\vspace{10pt}
+
+		\includegraphics[scale=0.1]{middleware_status_endpoint.png}
+		\vspace{-10pt}
+		\caption{The "status" endpoint}
+		\vspace{10pt}
+
+		\includegraphics[scale=0.1]{middleware_token_endpoint.png}
+		\vspace{-10pt}
+		\caption{The "token" endpoint}
+\end{figure}
+
 
 \subsection{Security evaluation}
 This is the core component of the solution and is security-critical, as it is in charge of authenticating the study participants.  Due to its criticality, I employed a number of
@@ -985,22 +1017,22 @@ one needs to either configure Rocket to use its own native TLS support as explai
 Here I will provide a security argument expressing that, in the absence of bugs, authentication via this component is as secure as the Yivi server the component communicates with
 during the login flow. \par
 Let's start by considering the \enquote*{qr} endpoint. When a software contacts this endpoint, all the middleware does is contacting the Yivi server on its
-behalf and relying the Yivi server's answer. As in this case the middleware just acts as an intermediary without any further elaboration other than encoding the server's answer as
+behalf and forwarding the Yivi server's answer. As in this case the middleware just acts as an intermediary without any further elaboration other than encoding the server's answer as
 a JSON string, an attacker using this endpoint cannot obtain anything more than what could be obtained by directly contacting the Yivi server. \par
 Let's now analyze the \enquote*{status} endpoint. Again, this endpoint just acts as an intermediary between some piece of software and the Yivi server: it gets as input an Yivi
-session pointer, uses it to query the Yivi server for the related session's status and relies the answer back. An attacker could try to use this endpoint to get the status of
+session pointer, uses it to query the Yivi server for the related session's status and forwards the answer back. An attacker could try to use this endpoint to get the status of
 someone else's session. But to do this, he would need to guess the related session pointer, and it is Yivi's responsibility to generate unguessable session pointers. In the
 hypothetical case that Yivi generates guessable session pointers, an attacker could obtain the session status by querying the Yivi server directly, and this endpoint would not
 provide any additional information. Providing an invalid session pointer would just result in an error. \par
 Finally, let's evaluate the \enquote*{token} endpoint. This is the only endpoint that is not just an intermediary between some other software and the Yivi server, as it also
-contacts PEP's authentication server. It uses the given session pointer to get the attribute's value from the Yivi server, rely it to PEP's authentication server to obtain an
+contacts PEP's authentication server. It uses the given session pointer to get the attribute's value from the Yivi server, forward it to PEP's authentication server to obtain an
 authentication token and sends this token back to the original requester. As the attribute's value is retrieved from Yivi and sent without any further elaboration to PEP's
 authentication server, it is Yivi's responsibility to guarantee the validity of the attribute's value. An attacker could try to use this endpoint to obtain someone else's
 authentication token. But, as in the case of the \enquote*{status} endpoint, to accomplish this the attacker needs to guess the correct Yivi session pointer. In this case, being
-able to guess the session pointer would let an attacker to obtain more than what would be obtained from the Yivi server alone, namely PEP's authentication token. But also in this
+able to guess the session pointer would let an attacker obtain more than what would be obtained from the Yivi server alone, namely PEP's authentication token. But also in this
 case, it is Yivi's responsibility to provide unguessable session pointers. \par
 Concluding, let's also briefly consider what could happen if the endpoints are not queried in the expected order. The \enquote*{qr} endpoint can be queried successfully at any
-time, as it doesn't require to provide any information. But querying it just results in the opening of a new Yivi session on the Yivi server. This does not pose any security
+time, as it doesn't require providing any information. But querying it just results in the opening of a new Yivi session on the Yivi server. This does not pose any security
 issue. Querying the other two endpoints before the \enquote*{qr} means querying them without knowing a valid Yivi session pointer, but passing an invalid session pointer just
 results in an error. \par
 A final note about this component's trust: it needs to be executed on a trusted machine, as it sees all study participants' PEP authentication tokens. This is no different from
@@ -1022,7 +1054,7 @@ cross-platform support, as it would be on the browser to account for OS and arch
 implementing the middleware's functionality \ref{middleware} written in Rust, and a client-side part taking care of downloading and decrypting the data implemented in Javascript.
 As with the other components, for the server-side functionality I used the Rocket web framework \cite{rocket}.
 In this way, I implemented a web application that, using a server-side backend to communicate with an Yivi server, was able to display an Yivi QR code to have study participants
-perform an Yivi session to authenticate themself. It worked up to the point of receiving PEP's authentication token. Then the problem was actually accessing the data with the
+perform an Yivi session to authenticate themselves. It worked up to the point of receiving PEP's authentication token. Then the problem was actually accessing the data with the
 token. To not have to reimplement PEP's internal protocols, the idea was to leverage pepcli \ref{pepcli} to download the data. But pepcli is a C++ executable, so it can't be used
 as-is inside a web application\footnote{Or at least, I was not able to find a way to invoke a local binary from a web application. Which makes sense: if this was possible, it would
 expose a functionality that would enable an attacker to escape from a browser's sandbox by having direct access to locally-installed software.}. The idea was to transpile it to a web 
@@ -1077,11 +1109,11 @@ delete the files on its behalf. \par
 Note that by default, this application runs as the same user as the user logged on the OS. So, a malicious application running with the user's privileges or higher, could access
 the files downloaded with this component. It is the user's responsibility to take precautions in order to avoid having malware running on his system.
 
-\section{PEP configuration}
+\section{PEP configuration}\label{pep_configuration}
 To make this solution work, it is required to also do some configuration work on PEP's side to configure the right permissions. Here I will present a concrete example illustrating
-all the needed pepcli commands to obtain a correct configuration. Note that this commands do not need to be executed manually: it is possible to create a script executing them or,
-as anticipated in \todo{add ref}, it would be possible to hardcode inside PEP the \textit{participant} user group to have the correct permissions applied automatically to all
-members of the group.
+all the needed pepcli commands to obtain a correct configuration. Note that these commands do not need to be executed manually: it is possible to create a script executing them or,
+as anticipated in section \ref{authenticationg_but_how}, it would be possible to hardcode inside PEP the \textit{participant} user group to have the correct permissions applied
+automatically to all members of the group.
 
 \subsection{general configuration}
 The configuration presented here will be reused as-is for all study participants, thus it is required to perform it only once. It consists in first creating a column group
@@ -1107,8 +1139,9 @@ $ pepcli --oauth-token-secret OAuthTokenSecret.json --oauth-token-group \
 
 \subsection{Per-participant configuration}
 The configuration presented in this section needs to be repeated for each study participant. It works for newly-registered and already-registered participants as well. As
-mentioned previously, it is possible to script the execution of these commands, so to avoid tedious manual work. Even better, in the future it would be possible to have a default
-user group for study participants, so that PEP can automatically apply the correct permissions to all members of the group. 
+mentioned previously, it is possible to script the execution of these commands, so to avoid tedious manual work. Even better, in the future it would be possible to have a special
+user group for study participants, so that PEP can automatically apply the correct permissions to all members of the group. This example assumes that the participant has the
+\textit{participant:bab472a1-f8b7-4397-8338-fb972e3b8280} identifier assigned as an Yivi credential. 
 
 \begin{enumerate}
 
@@ -1154,7 +1187,8 @@ $ pepcli --oauth-token-secret OAuthTokenSecret.json --oauth-token-group \
 -4397-8338-fb972e3b8280 read
 \end{minted}
 
-\item Crete new participant.
+\item Register a new participant. This is not needed if the participant is already registered inside PEP. Also note that there is a non-interactive version of this command, useful
+		for scripting. Refer to pepcli's documentation \cite{pepcli}.
 \begin{minted}{bash}
 $ pepcli --oauth-token-secret OAuthTokenSecret.json --oauth-token-group \
 "Data Administrator" register interactive
@@ -1169,7 +1203,15 @@ $ pepcli --oauth-token-secret OAuthTokenSecret.json --oauth-token-group \
 
 \end{enumerate}
 
-Now The user has access to the uploaded and to-be uploaded data.
+Now The user has access to the already uploaded data and the data that will be uploaded in the future.
+
+
+
+\section{Conclusion}
+This thesis presented a possible way to add a functionality to the PEP project to enable participants in medical studies to access the results of the medical tests they are subject
+to. It also discusses the security of the proposed solution and suggests possible future improvements. The proof of concept implementing this solution is available in a GitHub
+\cite{thesis-repo} repository alongside the code's documentation. Here \cite{data-access-new-version} is available a BPMN diagram summarizing the interaction of my proof of concept
+with the rest of PEP's architecture. The resulting picture is not included in this text due to formatting constraints.
 
 \iffalse
 
