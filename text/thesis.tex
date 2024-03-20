@@ -475,7 +475,8 @@ solutions, instead, while feasible in theory, failed in practice. This section b
 nicely integrates with the rest of PEP's architecture. Even though this attempt at a solution did not work out, some elements of it were used as part of the working solution
 presented later.\par
 As better explained in section \ref{failed_attempt_design}, this solution's core concept was to use SAML \ref{saml} and YIVI \ref{yivi} to authenticate study participants by using
-a SAML identity provider compatible with YIVI. Unfortunately, I could not get any of the existing SAML IdPs work with YIVI \todo{maybe mention the other extendable IdPs, https://gluu.org/ https://docs.jans.io/}, and implementing one from scratch is out-of-scope for this project.
+a SAML identity provider compatible with YIVI. Unfortunately, I could not get any of the existing SAML IdPs work with YIVI\todo{maybe mention the other extendable IdPs,
+https://gluu.org/ https://docs.jans.io/}, and implementing one from scratch was out-of-scope for this project.
 
 \subsection{Design choices}\label{failed_attempt_design}
 As PEP already uses the SAML standard \cite{sstc-saml-core-errata-2.0-wd-07} for authentication, it would be natural to implement a SAML identity provider using Yivi \cite{irma-app}.
@@ -493,15 +494,18 @@ This solution requires generating a credential that lets a study participant aut
 design choices, I decided to use the string \enquote*{participant:} followed by a random string as an identifier that gets linked to the participant during the registration phase. Such string is 
 a version 4 UUID as described in RFC 4122 \cite{uuid_rfc}. The reason for prepending the string \enquote*{participant:} is that this makes it clear that the attribute is related to
 a study participant. This can be used in the future to automatize or simplify some aspects of this login solution in the future by writing some logic specific for the case of
-participants authentication. Some suggestions of where this can be applied will be presented where relevant.
+participants authentication. Some suggestions of where this can be applied will be presented where relevant. The rationale for using version 4 UUIDs to generate the second part of
+the string is that we need to generate an unique identifier for each study participant. In case two or more people share the same credential, they would all get access to their own
+data but also the data of the participants they are sharing the credential with. Section \ref{application_to_version_4_uuid} shows that it is safe to assume that there will be no 
+collisions when using version 4 UUIDs as part of the credential.
 
 \subsubsection{Version 4 UUID}\label{uuid_collision_discussion}
 A version 4 UUID is a 128 bits-long value, usually represented as a string of hyphen-separated hexadecimal values. 6 bits are set to predetermined values, this leaves 122 bits of
 randomness. But the goal of UUID is to have identifiers that do not collide, not to have unpredictable values. In fact, the specification says: \enquote*{Do not assume that UUIDs are 
 hard to guess; they should not be used as security capabilities (identifiers whose mere possession grants access), for example. A predictable random number source will exacerbate the
 situation}. So the aforementioned 122 bits of entropy have to be considered only to evaluate the robustness against collisions. UUIDs should not be considered as a secret key, as
-the standard doesn't guarantee that they are hard to predict. The security against an adversary finding out a valid UUID and trying to forge a credential is given by Yivi and has
-no correlation with properties of UUID other than their resistance to collisions.
+the standard doesn't guarantee that they are hard to predict. In this solution, the security against an adversary finding out a valid UUID and trying to forge a credential is given by 
+Yivi and has no correlation with properties of UUID other than their resistance to collisions.
 
 \subsubsection{Estimating collision probability: the birthday paradox}
 To analyze the probability of two version 4 UUIDs colliding, we apply the birthday paradox. 
@@ -609,7 +613,7 @@ We can empirically see how close these different modelings of the problem are to
 The above graph shows that the binomial model is equivalent to the one obtained by applying the birthday paradox. Furthermore, when condition \ref{condition_for_poisson_approximation} is satisfied, the
 Poisson approximation allows us to get a result close to the exact value while being much less expensive to compute.
 
-\subsubsection{Application to version 4 UUID}
+\subsubsection{Application to version 4 UUID} \label{application_to_version_4_uuid}
 Version 4 UUIDs are 128 bits long, of which 6 are fixed and 122 are randomly generated. So we have $u=2^{122}$ possible UUIDs. Assuming a uniformly random number generator is used, this gives us
 $p=\frac{1}{u}=\frac{1}{2^{122}}$. So the condition on $p$'s value is satisfied. We can easily see from any of the previous modelings of the problem that, the more UUIDs get generated, the more likely it is to find a
 collision. This nice fact lets us consider worst-case scenarios while also satisfying the condition on the value of $n$ that makes the Poisson approximation close to the exact result,
@@ -636,14 +640,14 @@ identification methods. E.g. a shop needs to verify that a person is over 18 yea
 that person, his name and all the other information that is typically present on traditional identity documents. Yivi provides a way to disclose only a specific piece of
 information (in this case that a person is over 18), called an \textit{attribute}, without leaking any additional information \cite{irma-docs}. \par
 Summarized, it works by having a trusted third party act as an issuer. This party is in charge of verifying that a person has a certain characteristic (i.e. being over 18 or being
-a student) and then issuing the relative Yivi attribute to that person. Later, a verifier can contact an Yivi server to have it generate a disclosure request. The user reads this
+a student) and then issuing the relative Yivi attribute to that person. Later, a verifier can contact a Yivi server to have it generate a disclosure request. The user reads this
 request using his Yivi app and, if he agrees to disclose the requested attribute, the Yivi server validates the corresponding credential and lets the verifier know the value of the
 requested attribute. More details can be found in Yivi's documentation \cite{irma-docs}. \par
 Using Yivi has the advantages of offloading the actual authentication to a solid and privacy-preserving project, while providing at the same time a simple user experience: when
 authenticating via Yivi, a user has just to scan a QR-code with the Yivi app and confirm his will to disclose the requested attribute. \par
 The Yivi server periodically retrieves a list of valid attribute types from a centralized repository. Similarly, the Yivi app does not accept to store attributes not present in such
 centralized repository. To have one's credential added to this repository, one needs to create a pull request on a GitHub repository and pay the Privacy by Design Foundation a
-yearly fee \cite{irma-docs-issuer}. An alternative is to use demo credentials. It is possible to host an Yivi server with a locally-modified copy of the demo credentials
+yearly fee \cite{irma-docs-issuer}. An alternative is to use demo credentials. It is possible to host a Yivi server with a locally-modified copy of the demo credentials
 repository. These are credentials that only work for testing purposes and do not work on production systems. As an additional safety measure, the Yivi app does not work with such
 credentials unless developer mode is activated and one compiles his own version of the app with such credentials added to the local demo repository used while compiling the app. \par 
 To implement my proof of concept, I set up a local Yivi server with a demo credential called \enquote*{irma-demo.PEP.id} and I compiled my own version of the Yivi app with
@@ -651,8 +655,9 @@ this credential baked-in. This works for showing that my solution works, but if 
 contact the Privacy by Design Foundation to register a production credential.
 
 \subsubsection{The Rust programming language and memory safety} \label{rust_memory_safety}
-This solution requires writing some custom code, so we needed to choose a suitable programming language. In such a choice, there's always a subjective element and, for me, it was
-the curiosity of learning this recent language. Subjective judgment aside, there are also good objective reasons to pick Rust. \par
+The solution presented in \ref{authenticationg_but_how} requires writing some custom code, so we needed to choose a suitable programming language. This section explains why Rust is
+a sensible choice for a security-focused project like PEP and introduces one of Rust's distinctive features: the borrow checker.\par
+In selecting a programming language, there's always a subjective element and, for me, it was the curiosity of learning this recent language. Subjective judgment aside, there are also good objective reasons to pick Rust. \par
 PEP's codebase is written in C++, so we either need to use C++ itself or a language that nicely integrates with a C++ codebase. Additionally, PEP focuses on security, since it
 handles medical data. Rust aims at being a substitute for C and C++ while also offering strong safety guarantees, with a special focus on memory safety. It is also designed to fit
 with pre-existing C and C++ code. \par
@@ -716,7 +721,7 @@ a pointer to a string stored on the heap. Since duplicating heap data can be exp
 \enquote*{string1} into \enquote*{string2}, without allocating a new string. But this could be a problem, as now we have two pointers to the same memory region, and trying to deallocate both at the end of the
 scope would result in a double-free bug. To prevent this issue, the statement \enquote*{let string2=string1} doesn't just copy the pointer data, but it also invalidates the
 variable \enquote*{string1}. Since \enquote*{string1} is no longer valid, when the program reaches the end of the scope only \enquote*{string2} is deallocated, and there is no
-double-free. What happened from an ownership perspective, is that \enquote*{string1} was the original owner of the string, then the string got \enquote*{moved}\footnote{Rust uses
+double-free. What happened from an ownership perspective, is that \enquote*{string1} was the original owner of the string, then the string got \textit{moved}\footnote{Rust uses
 the verb \enquote*{to move} to indicate an assignment that results in an ownership change of the involved value} inside \enquote*{string2} which
 became the new owner. If we need two separate copies of the same heap data, we have to explicitly ask for it by invoking \enquote*{clone()}:
 
@@ -820,21 +825,23 @@ using a memory-safe language, developers can significantly reduce the number of 
 
 \subsection{Implementation}\label{failed_implementation}
 \subsubsection{Registration component}\label{registration-component}
-To implement this, there is the need to write a registration component that integrates with the current PEP participants registration flow. This component is in charge of
-generating credentials for study participants and issuing the corresponding Yivi cards. PEP already uses a web application as part of the registration procedure, so we opted for
-writing a web application in Rust. This application has three main components: a front-end in charge of rendering a simple interface and a back-end which is further divided into
-two components: one in charge of generating the attribute values and another handling the requests to the Yivi server. To build the front-end I used the Rocket web framework
-\cite{rocket}; while to generate UUIDs I used the uuid \cite{uuid_crate} library crate\footnote{In Rust's terminology, a crate indicates a project and can be of two different kinds:
-a library crate is a project that compiles to a library, while a binary crate is a project that compiles to an executable.}. Aiming to minimize the dependencies, the code uses the
-operating system's random number generator to generate version 4 UUIDs. To handle communication with the Yivi server I used the irma\footnote{IRMA was the former name of the Yivi
-project. At the time of writing, this library has not been renamed to Yivi yet.} library crate \cite{irma_crate}, and to generate the QR-code containing the Yivi card generated by
-the Yivi server I used the qrcode library crate \cite{qrcode_crate}. For an exhaustive list of all the dependencies, see \cite{registration_poc_cargo_toml}. The credential
-generation flow is as follows. When the application starts, it exposes an HTTP endpoint and waits for connections. Upon receiving a connection, it generates a string made by
-prepending the string \enquote*{participant:} to a version 4 UUID. Then it contacts a local Yivi server listening on port 8088, and asks it to generate a new Yivi card for the
-attribute \enquote*{irma-demo.PEP.id} with the generated string as the attribute's value. If the Yivi server answers with the requested attribute, the application generates a
-QR-code that the study participant scans to import the newly generated credential in their Yivi wallet.\footnote{Yivi calls \enquote*{wallet} its credential store} It also shows the attribute's value, so that PEP can
-be configured to link the credential to the right user\footnote{The configuration details are not provided in this section, as this attempt failed. But it would have been analogous
-to the configuration presented in section \ref{pep_configuration}}. Here is a BPMN diagram showing the flow:
+To implement the proposed authentication solution, there is the need to write a registration component that integrates with the current PEP participants registration flow. This
+component is in charge of generating credentials for study participants and issuing the corresponding Yivi cards. PEP already uses a web application as part of the registration
+procedure, so we opted for writing a web application in Rust. \par
+This application has three main components: a front-end in charge of rendering a simple interface and a back-end which is further divided into two components: one in charge of
+generating the Yivi attribute values as described in the beginning of section \ref{failed_attempt_design} and another handling the requests to the Yivi server needed to get a valid
+Yivi card with the generated attribute. To build the front-end I used the Rocket web framework \cite{rocket}; while to generate UUIDs I used the uuid \cite{uuid_crate} library
+crate\footnote{In Rust's terminology, a crate indicates a project and can be of two different kinds: a library crate is a project that compiles to a library, while a binary crate
+is a project that compiles to an executable.}. Aiming to minimize the dependencies, the code uses the operating system's random number generator to generate version 4 UUIDs. To
+handle communication with the Yivi server I used the irma\footnote{IRMA was the former name of the Yivi project. At the time of writing, this library has not been renamed to Yivi
+yet.} library crate \cite{irma_crate}, and to generate the QR-code containing the Yivi card generated by the Yivi server I used the qrcode library crate \cite{qrcode_crate}. For an
+exhaustive list of all the dependencies, see \cite{registration_poc_cargo_toml}. \par
+The credential generation flow is as follows. When the application starts, it exposes an HTTP endpoint and waits for connections. Upon receiving a connection, it generates a string
+made by prepending the string \enquote*{participant:} to a version 4 UUID. Then it contacts a local Yivi server listening on port 8088, and asks it to generate a new Yivi card for
+the attribute \enquote*{irma-demo.PEP.id} with the generated string as the attribute's value. If the Yivi server answers with the requested attribute, the application generates a
+QR-code that the study participant scans to import the newly generated credential in their Yivi wallet.\footnote{Yivi calls \enquote*{wallet} its credential store} It also shows
+the attribute's value, so that PEP can be configured to link the credential to the right user\footnote{The configuration details are not provided in this section, as this attempt
+failed. But it would have been analogous to the configuration presented in section \ref{pep_configuration}}. Here is a BPMN diagram showing the flow:
 
 \begin{figure}[H]
 		\includegraphics[scale=0.1]{credential issuing.png}
@@ -842,16 +849,21 @@ to the configuration presented in section \ref{pep_configuration}}. Here is a BP
 \end{figure}
 
 \subsubsection{Security evaluation}
-Since this component is executed as part of the participants registration procedures by PEP administrators, it is run in a trusted environment. The participant is present during
-the registration procedure, so there is no concrete risk of assigning the generated credential to the wrong person. Here the main security risk is represented by the uuid library crate
-\cite{uuid_crate}: we need that the generated UUIDs do not collide. If there is a bug in this library that results in generating the same UUID more than once, it would cause having
-multiple participants with the same credential, so they would get access to the same data. In other words, if two participants get the same credential, one of them would get access
-to the data of the other instead of his own. So the security of this component relies on this library being a correct implementation of the UUID version 4 standard \cite{uuid_rfc}.
-Assuming the library is a compliant implementation of the standard, the discussion in section \ref{uuid_collision_discussion} shows that we can expect that we will not get colliding UUIDs.
+Since this component is executed as part of the participants registration procedures by PEP administrators, it is run in a trusted\footnote{By trusted, here I mean under the
+control of the organization using PEP. So we can expect that no one tampers with it.}  environment. The participant is present during the registration procedure, so there is no
+concrete risk of assigning the generated credential to the wrong person. Here the main security risk is represented by the uuid library crate \cite{uuid_crate}: we need that the
+generated UUIDs do not collide. If there is a bug in this library that results in generating the same UUID more than once, it would cause having multiple participants with the same
+credential, so they would get access to the same data. In other words, if two participants get the same credential, both would get access to the data of the other person in
+addition to his own data. So the security of this component relies on this library being a correct implementation of the UUID version 4 standard \cite{uuid_rfc}.  Assuming the library is a
+compliant implementation of the standard, the discussion in section \ref{uuid_collision_discussion} shows that we can expect that we will not get colliding UUIDs. \par
+It would also be possible to not have this library as part of this solution's trusted computing base, at the cost of making the result less flexible. By checking that no existing
+user is already using the generated credential\footnote{It is possible to check this by controlling that no user exists with a username matching the generated attribute, see
+section \ref{pep_configuration}.}, it is possible to ensure the absence of collisions, even without using UUIDs. But this would remove the possibility of a participant
+using the same credential across different instances of PEP. This is further discussed in \todo{Add reference to the future work section}.
 
 \subsubsection{SAML identity provider}
 To let a study participant log-in with the Yivi credential in his possession via SAML, we need a SAML identity provider supporting Yivi. To implement this, I tried setting up
-SimpleSAMLphp \cite{simplesamlphp} to work as an Yivi \cite{about-irma} identity provider. SimpleSAMLphp can work both as a service provider and as an identity provider, and can be
+SimpleSAMLphp \cite{simplesamlphp} to work as a Yivi \cite{about-irma} identity provider. SimpleSAMLphp can work both as a service provider and as an identity provider, and can be
 extended by writing PHP plugins. There were already two previous attempts about writing such a plugin: \enquote*{simplesamlphp-module-authirma} \cite{simplesamlphp-module-authirma}
 by the Privacy by Design Foundation \cite{privacybydesignfoundation} and \enquote*{irma-idp} \cite{irma-idp} by SURF \cite{surf}.  Both appear to be unmaintained, but I first
 attempted to use those as a basis for my own implementation. \par I started by setting up a local Yivi server inside a Docker container and creating a demo credential
@@ -859,18 +871,17 @@ attempted to use those as a basis for my own implementation. \par I started by s
 a time when the Yivi HTTP server and the Yivi JSON API server where two separate components. While trying to make it work again, I stumbled upon the problem of getting the keys for
 the API and web servers. Probably the key is the same for both, as now the irmago server \cite{irma-docs-server} implements both, but I was not able to find the certificate in the
 required format inside my Docker container. \par After failing to make \enquote*{simplesamlphp-module-authirma} work again, I did some more research on previous work and found out
-about \enquote{irma-idp}. It is more recent and, while it still appears to be unmaintained, at least uses the current architecture where irmago provides both the HTTP server and
+about \enquote{irma-idp}. It is more recent and, while it still appears to be unmaintained, at least it uses the current architecture where irmago provides both the HTTP server and
 JSON API server components \cite{irma-docs-server}. But this project lacks configuration instructions and, again, I was not able to find the required certificate by trying the
 method reported in the repository's README \cite{irma-idp}. I asked for clarification in a GitHub issue, but to date I got no answer \cite{irma-idp-issue}. Additionally, looking at
 the code inside the repository it looked to either be incomplete or contain an error: the HTML code inside the \enquote*{disclose.html} file contains a \enquote*{Verify attribute}
-button that does not do anything, and there is no way to trigger the redirect specified inside the form.\todo{Should I include the relevant code snippet?} Likely the idea was to
-redirect the user upon clicking the aforementioned button, but in this case the code should have been written differently. 
-\par
+button that does not do anything, and there is no way to trigger the redirect specified inside the form. Likely the idea was to redirect the user upon clicking the aforementioned 
+button, but in this case the code should have been written differently. \par
 Since \enquote*{simplesamlphp-module-authirma} is unmaintained and targeted an old Yivi server implementation, and \enquote*{irma-idp} appears to be abandoned in a non-working
 state and with lacking documentation, I decided to write my own SimpleSAMLphp plugin instead of adapting old projects to work with the new irmago implementation. This is because
 attempting to fix these old implementations could have entailed a significant rewrite of their code, to the point of potentially nullifying the advantage of partially reusing their
 code. So I decided to start afresh. I installed and configured SimpleSAMLphp \cite{simplesamlphp-docs} as a SAML identity provider \cite{sstc-saml-core-errata-2.0-wd-07} inside a
-Docker container, then I followed its documentation to write an authentication source talking with an Yivi server. SimpleSAMLphp lets a developer write its own authentication
+Docker container, then I followed its documentation to write an authentication source talking with a Yivi server. SimpleSAMLphp lets a developer write its own authentication
 flow. After authentication is completed, one has to pass to SimpleSAMLphp the relative attribute and it will take care of generating a SAML assertion and send it to the user.
 Internally, it implements a state machine going through the different authentication steps. If a redirect is necessary during the authentication flow, it is necessary to save the
 authentication state and then restore it after the redirect.  Since I had to show the user a custom page containing a QR code to disclose its own Yivi credentials, I needed to save
@@ -887,7 +898,7 @@ Provider in-between PEP and the SAML IdP. Shibboleth redirects the user to SURFC
 here is a possible solution: write a middleware that works alongside Shibboleth; the user discloses its own attribute to this component, which in turn sends the disclosed attribute
 to PEP's authentication server. From PEP's perspective, there is no difference between Shibboleth and this middleware. \par
 Compared to writing a SAML IdP supporting Yivi, this solution is much simpler, as it does not require implementing the SAML specification: once the required credential is verified
-by an Yivi server, this component just forwards the disclosed attribute value (the identifier described in section \ref{failed_attempt_design}) to PEP's authentication server via
+by a Yivi server, this component just forwards the disclosed attribute value (the identifier described in section \ref{failed_attempt_design}) to PEP's authentication server via
 an HTTP request. By being a simple and small component, its maintenance adds only a little work to the PEP team's duties. 
 
 \section{The Shibboleth Service Provider: An Overview}
@@ -963,23 +974,26 @@ This is the component in charge of authenticating the study participants. It int
 application exposing the following three HTTP endpoints:
 
 \begin{itemize}
-	\item qr - starts an Yivi session to disclose the user's credential and returns a QR code to perform the session.
-	\item status - returns the status of an Yivi session.
-	\item token - returns PEP's authentication token for an Yivi session, if the attributes were disclosed successfully.
+	\item qr - starts a Yivi session to disclose the user's credential and returns a QR code to perform the session.
+	\item status - returns the status of a Yivi session.
+	\item token - returns PEP's authentication token for a Yivi session, if the attributes were disclosed successfully.
 \end{itemize}
 
 Internally, the application is divided into three components: the application's entrypoint, which also contains the definition of the HTTP endpoints, a class that handles the
 message exchanges with the Yivi server and a class that communicates with PEP's authentication server over HTTPS. \par
 Here is how the login flow looks like when using this custom middleware for authentication. First, some application sends an empty GET request to the \enquote*{qr} endpoint. The
-middleware contacts an Yivi server and asks it to generate a disclosure request for the attribute \enquote{irma-demo.PEP.id}. If the server answers
-correctly, it then encodes the server answer's data into a JSON string and sends it as its own answer to the requester. Note that this answer contains an Yivi session pointer, i.e.
+middleware contacts a Yivi server and asks it to generate a disclosure request for the attribute \enquote{irma-demo.PEP.id}. If the server answers
+correctly, it then encodes the server answer's data into a JSON string and sends it as its own answer to the requester. Note that this answer contains a Yivi session pointer, i.e.
 an unique identifier for the Yivi session just initiated. The requester encodes the data into a QR code that is shown to the user, so that the user can use its own Yivi app to
-perform an Yivi session. In the meantime, the requester uses the session pointer to poll the \enquote*{status} endpoint. When the middleware receives a GET request for the
-\enquote*{status} endpoint containing an Yivi session pointer, it uses this session pointer to query the Yivi server for the status of the pointed session and reports the answer
+perform a Yivi session. In the meantime, the requester uses the session pointer to poll the \enquote*{status} endpoint. When the middleware receives a GET request for the
+\enquote*{status} endpoint containing a Yivi session pointer, it uses this session pointer to query the Yivi server for the status of the pointed session and reports the answer
 back to the requester. This is needed so that the requester knows when a session is concluded and so the result is available. Once the Yivi session is done, the requester contacts
 the \enquote*{token} endpoint with a GET request containing the session pointer. Now, the middleware contacts the Yivi server using the given session pointer. If the Yivi session
-was successful, it will obtain the value for the disclosed attribute and send it to PEP's authentication server (i.e., it will perform PEP's authentication\todo{Should I detail
-		how PEP's authentication flow works?} flow needed for PEP to trust the information send by this component) to obtain an authentication token. Finally, it will forward this authentication token to the requester as a JSON string. \par
+was successful, it will obtain the value for the disclosed attribute and send it to PEP's authentication server (i.e., it will perform PEP's authentication flow needed for PEP to trust 
+the information send by this component) to obtain an authentication token. This boils down to a message exchange implementing a challenge-response protocol. In more detail, it
+implements OAuth's authorization code flow where a client first authenticates itself and obtains an authorization code, then uses this code to get a token
+granting access to the requested resource. This token is here referred to as authentication token. This protocol's details are found in \cite{oauth-authorization-code-grant-flow}
+and in \cite{oauth-code-verifier-flow}. Finally, it will forward this authentication token to the requester as a JSON string. \par
 Here are three BPMN diagrams summarizing the functionality of this middleware. Due to formatting constraints, each endpoint has been schematized in a separate image.
 
 \begin{figure}[H]
@@ -1019,7 +1033,7 @@ during the login flow. \par
 Let's start by considering the \enquote*{qr} endpoint. When a software contacts this endpoint, all the middleware does is contacting the Yivi server on its
 behalf and forwarding the Yivi server's answer. As in this case the middleware just acts as an intermediary without any further elaboration other than encoding the server's answer as
 a JSON string, an attacker using this endpoint cannot obtain anything more than what could be obtained by directly contacting the Yivi server. \par
-Let's now analyze the \enquote*{status} endpoint. Again, this endpoint just acts as an intermediary between some piece of software and the Yivi server: it gets as input an Yivi
+Let's now analyze the \enquote*{status} endpoint. Again, this endpoint just acts as an intermediary between some piece of software and the Yivi server: it gets as input a Yivi
 session pointer, uses it to query the Yivi server for the related session's status and forwards the answer back. An attacker could try to use this endpoint to get the status of
 someone else's session. But to do this, he would need to guess the related session pointer, and it is Yivi's responsibility to generate unguessable session pointers. In the
 hypothetical case that Yivi generates guessable session pointers, an attacker could obtain the session status by querying the Yivi server directly, and this endpoint would not
@@ -1046,15 +1060,15 @@ authentication server, breaking authentication.
 
 \section{PEP Participant Login Portal (PEP PLP)}\label{pep_plp}
 This is the component that the study participants interact directly with to access their data inside PEP. It communicates with the middleware described in \ref{middleware} to
-let a study participant login to PEP by disclosing an Yivi attribute, and then lets the participant browse the files containing medical tests' results. 
+let a study participant login to PEP by disclosing a Yivi attribute, and then lets the participant browse the files containing medical tests' results. 
 
 \subsection{Failed attempt}
 Initially, the idea was to implement it as a web application, as in recent times most computer users got used to web applications. Additionally, this would make it easier to have
 cross-platform support, as it would be on the browser to account for OS and architectural differences. My original plan was to have a server-side part of this application
 implementing the middleware's functionality \ref{middleware} written in Rust, and a client-side part taking care of downloading and decrypting the data implemented in Javascript.
 As with the other components, for the server-side functionality I used the Rocket web framework \cite{rocket}.
-In this way, I implemented a web application that, using a server-side backend to communicate with an Yivi server, was able to display an Yivi QR code to have study participants
-perform an Yivi session to authenticate themselves. It worked up to the point of receiving PEP's authentication token. Then the problem was actually accessing the data with the
+In this way, I implemented a web application that, using a server-side backend to communicate with a Yivi server, was able to display a Yivi QR code to have study participants
+perform a Yivi session to authenticate themselves. It worked up to the point of receiving PEP's authentication token. Then the problem was actually accessing the data with the
 token. To not have to reimplement PEP's internal protocols, the idea was to leverage pepcli \ref{pepcli} to download the data. But pepcli is a C++ executable, so it can't be used
 as-is inside a web application\footnote{Or at least, I was not able to find a way to invoke a local binary from a web application. Which makes sense: if this was possible, it would
 expose a functionality that would enable an attacker to escape from a browser's sandbox by having direct access to locally-installed software.}. The idea was to transpile it to a web 
@@ -1141,7 +1155,7 @@ $ pepcli --oauth-token-secret OAuthTokenSecret.json --oauth-token-group \
 The configuration presented in this section needs to be repeated for each study participant. It works for newly-registered and already-registered participants as well. As
 mentioned previously, it is possible to script the execution of these commands, so to avoid tedious manual work. Even better, in the future it would be possible to have a special
 user group for study participants, so that PEP can automatically apply the correct permissions to all members of the group. This example assumes that the participant has the
-\textit{participant:bab472a1-f8b7-4397-8338-fb972e3b8280} identifier assigned as an Yivi credential. 
+\textit{participant:bab472a1-f8b7-4397-8338-fb972e3b8280} identifier assigned as a Yivi credential. 
 
 \begin{enumerate}
 
@@ -1207,11 +1221,44 @@ Now The user has access to the already uploaded data and the data that will be u
 
 
 
-\section{Conclusion}
+\chapter{Final remarks and future work}
 This thesis presented a possible way to add a functionality to the PEP project to enable participants in medical studies to access the results of the medical tests they are subject
 to. It also discusses the security of the proposed solution and suggests possible future improvements. The proof of concept implementing this solution is available in a GitHub
 \cite{thesis-repo} repository alongside the code's documentation. Here \cite{data-access-new-version} is available a BPMN diagram summarizing the interaction of my proof of concept
 with the rest of PEP's architecture. The resulting picture is not included in this text due to formatting constraints.
+
+\section{Future work}
+Relax, sit down and drink a coffee. Consider replacing the middleware with a proper authentication provider, maybe Jannsen or Gluu. Consider creating special user group
+"participant", similarly to the "Data Administrator" and "Access Administrator" groups. This would be the basis to then automatize part of the configuration explained in
+\ref{pep_configuration} to give a study participant's account the correct permissions. Evaluate the tradeoff between using UUIDs and just check that no account with such credential
+already exists. If not using UUIDs, then add to pepcli switches to list existing users and groups: it helps in checking whether a user with a given name already exists or
+not\todo{check if now pepcli gives out an error in case a user or group already exists}. Implement parent \& child login.
+
+In section \ref{failed_attempt_design} I explained a possible login solution involving a SAML IdP. After failing to have a working SimpleSAMLphp instance running a custom plugin, I
+looked for other SAML IdPs that support plugins to add authentication methods, and found out about Gluu and Janssen. Gluu supports SAML identity federation \cite{gluu} and can be
+extended using the Agama framework \cite{agama} or by writing \enquote*{interception scripts} in Java or Jython \cite{jython}. But it requires a commercial license to be used.
+Jannsen is Gluu's upstream open source project \cite{janssen}, and offers the same extension capabilities. But its level of support for SAML isn't immediately clear: the only
+mention of SAML is in the \enquote*{Jans KC} component, whose lifecycle stage is reported as \enquote*{incubating}. Since I spent quite some time trying to make SimpleSAMLphp work
+with Yivi, I decided to not spend more time trying to make an existing IdP work with Yivi, as there was no guarantee that Jannsen would have worked. But this could be an
+interesting alternative to the middleware approach \ref{middleware}: the advantage of it is that it would benefit the whole Yivi ecosystem by providing a general-purpose SAML IdP
+instead of a component that only works inside PEP. This would enable organizations that already use SAML as part of their login solution to offer authentication via Yivi credentials.
+\par
+An area of further development could be automatizing the configuration presented in section \ref{pep_configuration}. I would suggest a combined approach: most of the configuration
+can be automatize by having a special user group, e.g. \enquote*{participant}, hardcoded into PEP in the same way as the \enquote*{Data Administrator} and \enquote*{Access
+Administrator} groups. Then, the parts that can't be automatized this way could be scripted or added to pepcli's add participant command \ref{pepcli}.\todo{check command}.\par For
+flexibility's sake. my solution uses an identifier based on the UUID version 4 standard. This leaves open the possibility of letting participants reusing the same credential across
+multiple PEP instances. This enhances the user experience, but it would require to manually transcribe the already existing credentials when creating accounts for participants
+already in possesion of a PEP credential. Manual transcription is error prone, so I would suggest to use \todo{add name} checksum as this is already used to prevent transcription
+errors for short pseudonyms \cite{pep-blueprint}. If instead there is no interest in letting study participants reuse their credential, the uuid library crate \todo{add ref} could
+be ditched entirely and a simpler identifier could be used. In this case, it could be useful to add to pepcli \ref{pepcli} the capability of listing existing users and groups, to
+simplify the check for credential collisions. \par
+In section \todo{add ref} the login solution is presented. There, the way to link a user to the corresponding participant data boils down to creating a participant group with a
+single participant inside. Then the user is given the rights needed to access this group. This solution can be expanded to also account for a parent accessing his child's data:
+just put both the parent and the child in the same participant group and give the participant group the same name as the parent's user name. This can be further extended to the
+case of two parents having access to their child's data: just create two groups, each one of them contains the child and one of the parents. This has the desiderable effect of
+giving both parents the right to access the child's data, but without one of the two parents being able to access the data of the other.
+
+
 
 \iffalse
 
@@ -1230,7 +1277,7 @@ Salesforce. This could have posed some issues though:
 Let's analyze these issues. If the seed is stored alongside personal data, then getting it from Salesforce could expose personal identifiable information. How? One could argue that
 they shouldn't store anything inside Salesforce anyway... But it is done to be able to de-anonymize users in special circumstances. And here we get to the point: better not touch
 Salesforce, unless those special circumstances arise. The second issue is about API access. Salesforce does have it, but only for certain editions \cite{salesforce}. The PEP team
-blackballed the idea of accessing Salesforce. The next proposal was to give participants their own ID (main pseudonym) during the enrollment procedure as an Yivi credential, but
+blackballed the idea of accessing Salesforce. The next proposal was to give participants their own ID (main pseudonym) during the enrollment procedure as a Yivi credential, but
 providing them with this ID could disclose more information than necessary.
 Since this first idea was discarded, I considered the following approaches:
 \begin{enumerate}
